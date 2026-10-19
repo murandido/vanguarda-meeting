@@ -1,0 +1,48 @@
+# Configuração do cargo-deny (QG-06). Esquema do cargo-deny >= 0.16.
+
+[graph]
+all-features = true
+
+[advisories]
+# Vulnerabilidades sempre quebram o build, e versões yanked também.
+# Crates sem manutenção só quebram quando são dependência direta nossa:
+# as transitivas (hoje im, bitmaps, sized-chunks e atomic-polyfill, todas
+# via loro) não temos como trocar sozinhos.
+yanked = "deny"
+unmaintained = "workspace"
+ignore = []
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "BSL-1.0",
+]
+confidence-threshold = 0.8
+# A lista acima é uma política, não um inventário: não avisar se alguma
+# licença permitida não aparecer no grafo.
+unused-allowed-license = "allow"
+
+[licenses.private]
+# Os crates do workspace são `license = "UNLICENSED"` e `publish = false`.
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Dependências por path entre crates do workspace são permitidas.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

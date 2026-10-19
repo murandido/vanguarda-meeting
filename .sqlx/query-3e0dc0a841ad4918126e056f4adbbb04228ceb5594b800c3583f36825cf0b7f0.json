@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO board_snapshots (board_id, snapshot) VALUES (?, ?)\n         ON CONFLICT (board_id) DO UPDATE\n         SET snapshot = excluded.snapshot,\n             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "3e0dc0a841ad4918126e056f4adbbb04228ceb5594b800c3583f36825cf0b7f0"
+}

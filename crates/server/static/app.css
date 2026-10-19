@@ -1,0 +1,9 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; }
+.home { max-width: 40rem; margin: 3rem auto; padding: 0 1rem; }
+.toolbar { position: fixed; inset: 0 0 auto 0; display: flex; gap: 1rem; align-items: center;
+  padding: .5rem 1rem; background: Canvas; border-bottom: 1px solid GrayText; z-index: 1; }
+.toolbar .hint { margin-left: auto; color: GrayText; font-size: .85em; }
+#status[data-state="online"] { color: green; }
+#status[data-state="offline"] { color: crimson; }
+#board { display: block; width: 100vw; height: 100vh; touch-action: none; }

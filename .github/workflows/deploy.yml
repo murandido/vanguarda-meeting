@@ -1,0 +1,34 @@
+# Deploy para a VPS Oracle Ampere (aarch64) — AINDA NÃO CONFIGURADO.
+#
+# Dispara quando o workflow "CI" termina com sucesso na `main`.
+# Hoje é apenas um placeholder inofensivo: não usa secrets nem altera nada.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    steps:
+      # TODO(deploy):
+      #   1. Build do `server` para aarch64-unknown-linux-gnu — via `cross` ou
+      #      direto num runner ARM nativo (`runs-on: ubuntu-24.04-arm`).
+      #   2. Baixar o artifact `canvas-pkg` do run de CI
+      #      (github.event.workflow_run.id) em vez de recompilar o wasm.
+      #   3. `scp` do binário + crates/server/static + pkg para a VPS
+      #      (chave SSH e host em secrets do environment `production`).
+      #   4. Reiniciar a unit systemd do servidor (`systemctl restart ...`)
+      #      e fazer um health check.
+      - name: placeholder
+        run: |
+          echo "Deploy para a VPS Oracle Ampere (aarch64) ainda não está configurado."
+          echo "CI ok no commit ${{ github.event.workflow_run.head_sha }} — nada a fazer por enquanto."

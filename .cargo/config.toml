@@ -1,0 +1,4 @@
+[env]
+# As macros query! usam os metadados versionados em .sqlx/ (QG-05).
+# `cargo sqlx prepare` e o job sqlx do CI sobrescrevem com SQLX_OFFLINE=false.
+SQLX_OFFLINE = "true"

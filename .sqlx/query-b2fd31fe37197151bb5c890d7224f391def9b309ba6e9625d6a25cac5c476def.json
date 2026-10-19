@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT snapshot FROM board_snapshots WHERE board_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "snapshot",
+        "ordinal": 0,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b2fd31fe37197151bb5c890d7224f391def9b309ba6e9625d6a25cac5c476def"
+}

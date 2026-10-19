@@ -1,0 +1,11 @@
+# Hooks locais (instale com `lefthook install`).
+# O título dos commits/PRs é validado no CI (QG-10), não aqui.
+pre-commit:
+  parallel: true
+  commands:
+    fmt:
+      glob: "*.rs"
+      run: cargo fmt --all --check
+    clippy:
+      glob: "*.rs"
+      run: cargo clippy --workspace --all-targets -- -D warnings

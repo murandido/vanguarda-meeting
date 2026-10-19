@@ -1,0 +1,293 @@
+# Quality gates do projeto (QG-01 .. QG-11).
+#
+# Os `name:` de cada job são usados como status checks obrigatórios na
+# proteção da branch `main` — NÃO renomeie sem atualizar as regras do repo.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancela execuções antigas do mesmo ref. Em `main` não cancelamos, para que
+# todo push gere sua baseline de cobertura (QG-09).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # As macros `query!` do sqlx usam os metadados versionados em `.sqlx/`.
+  SQLX_OFFLINE: true
+
+jobs:
+  # QG-01 — formatação.
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  # QG-02 — lints (nativo + wasm32 para o crate canvas).
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: clippy (workspace, nativo)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: clippy (canvas, wasm32)
+        run: cargo clippy -p canvas --target wasm32-unknown-unknown -- -D warnings
+
+  # QG-03/QG-04 — testes unitários, de integração e de propriedade
+  # (convergência via proptest em crates/canvas/tests) + doctests.
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: nextest
+        run: cargo nextest run --workspace
+      # O nextest não executa doctests.
+      - name: doctests
+        run: cargo test --doc --workspace
+
+  # QG-05 — os metadados offline em `.sqlx/` precisam estar em dia com as queries.
+  sqlx:
+    name: sqlx
+    runs-on: ubuntu-latest
+    env:
+      # `prepare` precisa de um banco real para validar as queries.
+      SQLX_OFFLINE: false
+      DATABASE_URL: sqlite://${{ github.workspace }}/target/sqlx-check.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # sqlx-cli não publica binários: o install-action cai no cargo-binstall,
+      # que compila a partir do fonte (lento, mas fica no cache do rust-cache).
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: sqlx-cli
+      - name: criar banco temporário e aplicar migrações
+        run: |
+          mkdir -p target
+          sqlx database create
+          sqlx migrate run --source crates/server/migrations
+      - name: cargo sqlx prepare --check
+        run: cargo sqlx prepare --workspace --check
+
+  # QG-06 — advisories, licenças, bans e fontes (ver deny.toml).
+  deny:
+    name: deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - run: cargo deny check
+
+  # QG-07 — build do wasm e orçamento de tamanho.
+  wasm:
+    name: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - name: wasm-pack build
+        run: wasm-pack build crates/canvas --target web --release
+      - name: orçamento de tamanho (gzip)
+        run: scripts/check-wasm-size.sh crates/canvas/pkg/canvas_bg.wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: canvas-pkg
+          path: crates/canvas/pkg
+          if-no-files-found: error
+          retention-days: 7
+
+  # QG-09 — cobertura de linhas não pode cair em relação à `main`.
+  #
+  # Baseline: guardada via actions/cache. Escolhemos o cache (e não
+  # upload-artifact + action de terceiros) porque PRs já conseguem ler caches
+  # criados na branch base sem token extra nem dependência adicional. Cada push
+  # na main salva uma chave única (`coverage-main-<run_id>`, caches são
+  # imutáveis) e os PRs restauram pelo prefixo `coverage-main-`, que devolve a
+  # entrada mais recente. Caches não usados por 7 dias são removidos pelo
+  # GitHub; nesse caso o PR passa com aviso até o próximo push na main.
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    env:
+      COVERAGE_TOLERANCE: "0.1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov,cargo-nextest
+      - name: medir cobertura
+        run: |
+          cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
+          cargo llvm-cov report --summary-only --json --output-path coverage.json
+          pct="$(jq -r '.data[0].totals.lines.percent' coverage.json)"
+          printf '%.2f\n' "$pct" > coverage-pct.txt
+          echo "Cobertura de linhas: $(cat coverage-pct.txt)%"
+
+      # --- push na main: salva a baseline ---
+      - name: preparar baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p .coverage-baseline
+          cp coverage-pct.txt .coverage-baseline/coverage-main.txt
+      - name: salvar baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .coverage-baseline
+          key: coverage-main-${{ github.run_id }}
+
+      # --- PR: compara com a baseline da main ---
+      - name: restaurar baseline da main
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: .coverage-baseline
+          # Chave inexistente de propósito: força o uso do restore-keys (mais recente).
+          key: coverage-main-restore-${{ github.run_id }}
+          restore-keys: coverage-main-
+
+      - name: comparar com a baseline
+        if: github.event_name == 'pull_request'
+        run: |
+          pr="$(cat coverage-pct.txt)"
+          base_file=.coverage-baseline/coverage-main.txt
+          {
+            echo "## Cobertura (QG-09)"
+            echo
+            echo "| | Linhas |"
+            echo "|---|---|"
+            echo "| PR | ${pr}% |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ ! -f "$base_file" ]]; then
+            echo "| main | (sem baseline) |" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Cobertura::Sem baseline da main ainda; gate ignorado nesta execução."
+            exit 0
+          fi
+
+          base="$(cat "$base_file")"
+          min="$(awk -v b="$base" -v t="$COVERAGE_TOLERANCE" 'BEGIN { printf "%.2f", b - t }')"
+          {
+            echo "| main | ${base}% |"
+            echo "| mínimo aceito | ${min}% (tolerância ${COVERAGE_TOLERANCE} p.p.) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if awk -v p="$pr" -v m="$min" 'BEGIN { exit !(p < m) }'; then
+            echo "::error title=Cobertura::Cobertura do PR (${pr}%) abaixo da main (${base}%) menos a tolerância (${COVERAGE_TOLERANCE})."
+            exit 1
+          fi
+          echo "Cobertura OK: PR ${pr}% >= mínimo ${min}%."
+
+      - name: resumo (main)
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "## Cobertura (QG-09)"
+            echo
+            echo "Linhas: $(cat coverage-pct.txt)%"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov.info
+          retention-days: 7
+
+  # QG-08 — testes end-to-end com Playwright. O webServer do
+  # playwright.config.ts sobe o servidor sozinho (`cargo run -p server`).
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    needs: wasm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: canvas-pkg
+          path: crates/canvas/pkg
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: build do servidor
+        run: cargo build -p server
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          retention-days: 7
+
+  # QG-10 — título do PR em Conventional Commits (o squash usa o título).
+  pr-title:
+    name: pr-title
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # QG-11 — benchmarks (informativo, não obrigatório). Por enquanto só compila;
+  # os benchmarks de verdade entram depois.
+  bench:
+    name: bench
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo bench --workspace --no-run

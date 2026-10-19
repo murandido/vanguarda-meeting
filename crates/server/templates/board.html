@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ board }} · Cartazes{% endblock %}
+{% block body %}
+<header class="toolbar">
+  <a href="/">Vanguarda</a>
+  <span>Cartazes / <strong>{{ board }}</strong></span>
+  <span id="status" data-state="connecting">conectando…</span>
+  <span class="hint">duplo clique cria · arraste para mover</span>
+</header>
+<canvas id="board" data-board="{{ board }}"></canvas>
+<script type="module" src="/static/board.js"></script>
+{% endblock %}

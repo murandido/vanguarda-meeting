@@ -1,0 +1,6 @@
+/target
+/crates/canvas/pkg
+*.db
+*.db-shm
+*.db-wal
+.env
