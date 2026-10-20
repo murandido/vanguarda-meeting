@@ -10,6 +10,7 @@ use std::cell::RefCell;
 use loro::{ExportMode, Frontiers, LoroDoc, LoroMap, LoroValue, VersionVector};
 
 pub mod camera;
+pub mod history;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
@@ -58,6 +59,8 @@ pub struct Board {
     /// estado não mudarem. Reler o documento inteiro a cada frame custaria
     /// caro com milhares de formas; comparar frontiers é barato.
     cache: RefCell<Option<(Frontiers, Vec<Rect>)>>,
+    /// Per-user undo/redo; see [`history`].
+    history: history::History,
 }
 
 impl Default for Board {
@@ -71,10 +74,12 @@ impl Board {
     pub fn new() -> Self {
         let doc = LoroDoc::new();
         let sent = doc.oplog_vv();
+        let history = history::History::new(&doc);
         Self {
             doc,
             sent,
             cache: RefCell::new(None),
+            history,
         }
     }
 
@@ -203,10 +208,14 @@ impl Board {
 
     /// Aplica uma atualização ou snapshot vindo de outro participante.
     pub fn import(&mut self, bytes: &[u8]) -> Result<(), BoardError> {
-        self.doc
+        let group = self.history.before_import();
+        let result = self
+            .doc
             .import(bytes)
             .map(|_| ())
-            .map_err(|e| BoardError::Import(e.to_string()))
+            .map_err(|e| BoardError::Import(e.to_string()));
+        self.history.after_import(group);
+        result
     }
 
     /// Mudanças ainda não enviadas, ou `None` se não houver nenhuma.

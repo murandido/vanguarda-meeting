@@ -90,7 +90,8 @@ function sendCursor(sx, sy) {
 //
 // Pan: espaço + arraste, botão do meio, ou rolagem com dois dedos (wheel sem
 // Ctrl). Zoom: Ctrl/Cmd + roda ou pinça (wheel com ctrlKey), em torno do
-// ponteiro. Teclado: Shift+0 / Ctrl+0 = 100%, Shift+1 = enquadrar tudo.
+// ponteiro. Teclado: Shift+0 / Ctrl+0 = 100%, Shift+1 = enquadrar tudo,
+// Ctrl/Cmd+Z = desfazer, Ctrl/Cmd+Shift+Z ou Ctrl+Y = refazer.
 
 const pointer = { x: 0, y: 0, inside: false };
 let spaceHeld = false;
@@ -112,6 +113,8 @@ canvas.addEventListener("pointerdown", (e) => {
     if (!hit) return;
     gesture = { kind: "drag", id: hit.id, dx: wx - hit.x, dy: wy - hit.y };
     hit.free();
+    // The whole drag undoes as one step.
+    board.beginGroup();
   } else {
     return;
   }
@@ -139,6 +142,7 @@ canvas.addEventListener("pointermove", (e) => {
 });
 
 function endGesture() {
+  if (gesture?.kind === "drag") board.endGroup();
   gesture = null;
   updateCursorStyle();
 }
@@ -194,7 +198,19 @@ addEventListener("keydown", (e) => {
     return;
   }
   const mod = e.ctrlKey || e.metaKey;
-  if (e.code === "Digit0" && (e.shiftKey || mod) && !e.altKey) {
+  // Layout-aware letter (e.key), like native Ctrl+Z.
+  const letter = e.key.toLowerCase();
+  if (mod && !e.altKey && (letter === "z" || (letter === "y" && !e.shiftKey))) {
+    // Undo/redo only this user's own edits; text fields keep native undo
+    // (filtered by typing() above). Ignored mid-drag.
+    e.preventDefault();
+    if (gesture?.kind === "drag") return;
+    const redo = letter === "y" || e.shiftKey;
+    if (redo ? board.redo() : board.undo()) {
+      flush();
+      changed();
+    }
+  } else if (e.code === "Digit0" && (e.shiftKey || mod) && !e.altKey) {
     e.preventDefault();
     camera.resetZoom(canvas.clientWidth, canvas.clientHeight);
     cameraChanged();
