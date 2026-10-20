@@ -28,11 +28,28 @@ wasm-pack build crates/canvas --target web --release
 cargo run -p server                                # http://127.0.0.1:3000
 ```
 
-Variáveis do servidor: `DATABASE_URL` (padrão `sqlite://vanguarda.db`), `BIND`
-(padrão `127.0.0.1:3000`), `STATIC_DIR`, `PKG_DIR`.
+Para desenvolver sem configurar o GitHub:
 
-Abra `/b/teste` em duas abas: duplo clique cria um retângulo, arrastar move,
-e a outra aba acompanha.
+```sh
+DEV_LOGIN=1 ALLOWED_GITHUB_USERS=ana,bia cargo run -p server
+```
+
+Abra `/login`, entre como `ana` numa janela e `bia` numa janela anônima, e abra
+`/b/teste` nas duas: duplo clique cria um retângulo, arrastar move, e a outra
+janela acompanha.
+
+### Variáveis do servidor
+
+| Variável | Padrão | Para quê |
+| --- | --- | --- |
+| `ALLOWED_GITHUB_USERS` | — (obrigatória) | Logins do GitHub convidados, separados por vírgula |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | — | OAuth App do GitHub; obrigatórias sem `DEV_LOGIN` |
+| `PUBLIC_URL` | `http://127.0.0.1:3000` | Base do callback: `{PUBLIC_URL}/auth/github/callback` |
+| `COOKIE_SECURE` | `true` se `PUBLIC_URL` for https | Cookie de sessão só por HTTPS |
+| `DEV_LOGIN` | desligado | Libera `/auth/dev/{login}`; só aceito com `BIND` em loopback |
+| `DATABASE_URL` | `sqlite://vanguarda.db` | Banco SQLite |
+| `BIND` | `127.0.0.1:3000` | Endereço do servidor |
+| `STATIC_DIR`, `PKG_DIR` | pastas do repo | Estáticos e saída do `wasm-pack` |
 
 ## Quality gates
 

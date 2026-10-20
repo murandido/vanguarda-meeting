@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block body %}
 <main class="home">
-  <h1>Vanguarda</h1>
+  <header class="top">
+    <h1>Vanguarda</h1>
+    {% include "_user.html" %}
+  </header>
   <section>
     <h2>Cartazes</h2>
     <form id="open-board">

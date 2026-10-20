@@ -11,6 +11,7 @@ use std::{
 };
 
 use axum::{
+    Extension,
     extract::{
         Path, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
@@ -24,7 +25,7 @@ use shared::PresenceMsg;
 use sqlx::SqlitePool;
 use tokio::sync::{Mutex, broadcast};
 
-use crate::{AppState, db};
+use crate::{AppState, auth::CurrentUser, db};
 
 const ROOM_BUFFER: usize = 256;
 
@@ -78,6 +79,7 @@ impl Rooms {
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
+    Extension(user): Extension<CurrentUser>,
     Path(board): Path<String>,
     State(state): State<AppState>,
 ) -> Response {
@@ -85,14 +87,19 @@ pub async fn ws_handler(
         return StatusCode::NOT_FOUND.into_response();
     }
     ws.on_upgrade(move |socket| async move {
-        if let Err(e) = handle_socket(socket, &state, &board).await {
+        if let Err(e) = handle_socket(socket, &state, &board, user.login).await {
             tracing::warn!(board, "conexão encerrada com erro: {e:#}");
         }
         state.rooms.leave(&board).await;
     })
 }
 
-async fn handle_socket(socket: WebSocket, state: &AppState, board_id: &str) -> anyhow::Result<()> {
+async fn handle_socket(
+    socket: WebSocket,
+    state: &AppState,
+    board_id: &str,
+    login: String,
+) -> anyhow::Result<()> {
     let room = state.rooms.join(&state.db, board_id).await?;
     let me = state.rooms.next_conn.fetch_add(1, Ordering::Relaxed);
 
@@ -124,7 +131,7 @@ async fn handle_socket(socket: WebSocket, state: &AppState, board_id: &str) -> a
         }
     });
 
-    let mut user: Option<String> = None;
+    let mut sent_cursor = false;
     let result = loop {
         let msg = tokio::select! {
             msg = stream.next() => msg,
@@ -150,15 +157,19 @@ async fn handle_socket(socket: WebSocket, state: &AppState, board_id: &str) -> a
                 db::save_snapshot(&state.db, board_id, &snapshot).await?;
             }
             Ok(Message::Text(text)) => {
-                let Ok(presence) = serde_json::from_str::<PresenceMsg>(&text) else {
+                // Só cursores; o nome vem da sessão, nunca do cliente.
+                let Ok(PresenceMsg::Cursor { x, y, .. }) = serde_json::from_str(&text) else {
                     continue;
                 };
-                if let PresenceMsg::Cursor { user: name, .. } = &presence {
-                    user.get_or_insert_with(|| name.clone());
-                }
+                let cursor = PresenceMsg::Cursor {
+                    user: login.clone(),
+                    x,
+                    y,
+                };
+                sent_cursor = true;
                 let _ = room.tx.send(Frame {
                     from: me,
-                    msg: Message::Text(text),
+                    msg: Message::Text(serde_json::to_string(&cursor)?.into()),
                 });
             }
             Ok(Message::Close(_)) => break Ok(()),
@@ -168,8 +179,8 @@ async fn handle_socket(socket: WebSocket, state: &AppState, board_id: &str) -> a
     };
 
     forward.abort();
-    if let Some(user) = user {
-        let leave = serde_json::to_string(&PresenceMsg::Leave { user })?;
+    if sent_cursor {
+        let leave = serde_json::to_string(&PresenceMsg::Leave { user: login })?;
         let _ = room.tx.send(Frame {
             from: me,
             msg: Message::Text(leave.into()),

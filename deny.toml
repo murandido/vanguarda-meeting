@@ -25,6 +25,8 @@ allow = [
     "MPL-2.0",
     "CC0-1.0",
     "BSL-1.0",
+    # Certificados raiz da Mozilla (webpki-root-certs, via reqwest/rustls).
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 # A lista acima é uma política, não um inventário: não avisar se alguma
