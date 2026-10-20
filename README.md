@@ -35,11 +35,18 @@ DEV_LOGIN=1 ALLOWED_GITHUB_USERS=ana,bia cargo run -p server
 ```
 
 Abra `/login`, entre como `ana` numa janela e `bia` numa janela anônima, crie
-um quadro em **Cartazes → Novo quadro** e abra-o nas duas: duplo clique cria um
-retângulo, arrastar move, e a outra janela acompanha. Só abrem quadros criados
+um quadro em **Cartazes → Novo quadro** e abra-o nas duas: duplo clique (ou `N`)
+cria um post-it, arrastar move, e a outra janela acompanha. Só abrem quadros criados
 pela home (`/b/{id}` desconhecido dá 404; arquivado, 410). Use
 `http://127.0.0.1:3000` (e não `localhost`): o WebSocket só aceita `Origin`
 igual a `PUBLIC_URL`.
+
+Post-its (CA-02): duplo clique ou `Enter` edita o texto (`Shift+Enter` quebra a
+linha; `Enter`, `Esc` ou clicar fora conclui); com o post-it selecionado, a
+barra flutuante troca a cor e a alça no canto inferior direito redimensiona.
+Figurinhas (CA-04): escolha uma em "Figurinhas" e clique no quadro; arraste
+para mover, use a alça do canto para escalar e a alça de cima ou `[` / `]`
+para girar. `Delete`/`Backspace` apaga a forma selecionada.
 
 O quadro é infinito (CA-01), com câmera local de cada um: espaço + arraste,
 botão do meio ou rolagem com dois dedos movem a vista; Ctrl/Cmd + roda ou pinça
