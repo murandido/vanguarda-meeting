@@ -281,14 +281,17 @@ jobs:
       - name: npm ci
         working-directory: e2e
         run: npm ci
-      # Browsers do Playwright em cache (a versão vem do package-lock). As
-      # dependências de sistema (apt) não cabem no cache e são instaladas
-      # sempre; o download do navegador é pulado quando o cache acerta.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Browsers do Playwright em cache (a versão vem do package-lock). Num
+      # acerto de cache não rodamos o `--with-deps`: as bibliotecas de sistema
+      # do Chromium já vêm na imagem do runner (que traz o Google Chrome), e o
+      # apt-get custaria ~12 s por execução. Num erro de cache, instala tudo.
+      - id: pw_cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
       - name: instalar Chromium (headless shell)
+        if: steps.pw_cache.outputs.cache-hit != 'true'
         working-directory: e2e
         run: npx playwright install --with-deps --only-shell chromium
       - id: e2e
