@@ -17,6 +17,11 @@ wasm-bindgen.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "culling"
+harness = false
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-Oz"]

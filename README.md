@@ -38,6 +38,12 @@ Abra `/login`, entre como `ana` numa janela e `bia` numa janela anônima, e abra
 `/b/teste` nas duas: duplo clique cria um retângulo, arrastar move, e a outra
 janela acompanha.
 
+O quadro é infinito (CA-01), com câmera local de cada um: espaço + arraste,
+botão do meio ou rolagem com dois dedos movem a vista; Ctrl/Cmd + roda ou pinça
+dão zoom (10%–400%) em torno do ponteiro; `Shift+0`/`Ctrl+0` voltam a 100% e
+`Shift+1` enquadra todo o conteúdo. Benchmark do recorte por viewport:
+`cargo bench -p canvas`.
+
 O Ritmo fica em `/ritmo`: crie um projeto em "Projetos e configurações", adicione
 tarefas, confirme a semana e faça o check-in do dia em `/ritmo/checkin`. A outra
 janela atualiza sozinha (SSE em `/ritmo/events`). A semana vira no fim do dia da
