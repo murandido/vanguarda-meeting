@@ -505,7 +505,7 @@ mod tests {
         };
         assert!(same_origin(&with("https://vanguarda.exemplo"), url));
         assert!(same_origin(&with("https://Vanguarda.Exemplo"), url));
-        assert!(!same_origin(&with("https://m80.exemplo"), url));
+        assert!(!same_origin(&with("https://other.example.com"), url));
         assert!(!same_origin(&with("http://vanguarda.exemplo"), url));
         assert!(!same_origin(&with("https://vanguarda.exemplo:8443"), url));
         assert!(!same_origin(&with("null"), url));

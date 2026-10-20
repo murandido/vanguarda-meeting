@@ -262,7 +262,7 @@ async fn unknown_archived_and_foreign_origin_are_refused() {
     assert_eq!(status, StatusCode::GONE);
 
     // CSWSH: outro subdomínio (mesmo "site" para o cookie) ou sem Origin.
-    for origin in [Some("https://m80.emioitenta.com.br"), None] {
+    for origin in [Some("https://sibling.example.com"), None] {
         let status = refused_with(connect(&base, "q5", "ana", origin).await);
         assert_eq!(status, StatusCode::FORBIDDEN, "{origin:?}");
     }
