@@ -1,0 +1,30 @@
+# Stack de produção do Vanguarda na VPS. Fica em /opt/vanguarda junto com o
+# .env (segredos, permissão 600) e é atualizado pelo deploy/deploy.sh.
+name: vanguarda
+
+services:
+  app:
+    image: ghcr.io/murandido/vanguarda-meeting:${IMAGE_TAG:?defina IMAGE_TAG}
+    # O Caddy do m80 alcança o app por este nome, na rede backend_default.
+    container_name: vanguarda-meeting
+    env_file: .env
+    environment:
+      BIND: 0.0.0.0:3000
+    volumes:
+      - ./data:/data
+    networks: [backend_default]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/server", "--healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+
+networks:
+  backend_default:
+    external: true

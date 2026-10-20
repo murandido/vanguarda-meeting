@@ -48,3 +48,65 @@ async fn static_assets_are_public() {
     assert_eq!(res.status(), StatusCode::OK);
     assert!(body_text(res).await.contains("takePendingUpdate"));
 }
+
+#[tokio::test]
+async fn healthcheck_probe() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = router(memory_db().await, dev_auth());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    assert!(server::healthcheck(port).await);
+
+    // Porta sem ninguém ouvindo.
+    let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let dead = closed.local_addr().unwrap().port();
+    drop(closed);
+    assert!(!server::healthcheck(dead).await);
+}
+
+#[test]
+fn health_port_from_bind() {
+    assert_eq!(server::health_port(Some("0.0.0.0:8080")), 8080);
+    assert_eq!(server::health_port(Some("lixo")), 3000);
+    assert_eq!(server::health_port(None), 3000);
+}
+
+#[tokio::test]
+async fn healthcheck_rejects_non_ok_answer() {
+    use tokio::io::AsyncWriteExt;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let _ = socket
+            .write_all(b"HTTP/1.1 503 Service Unavailable\r\n\r\nbusy")
+            .await;
+    });
+    assert!(!server::healthcheck(port).await);
+}
+
+/// O binário com `--healthcheck`, como o Docker o chama em produção.
+/// `multi_thread`: o processo filho bloqueia uma thread enquanto o servidor
+/// do teste responde em outra.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn binary_healthcheck_exit_code() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = router(memory_db().await, dev_auth());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let run = |bind: String| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_server"))
+            .arg("--healthcheck")
+            .env("BIND", bind)
+            .status()
+            .unwrap()
+    };
+    assert!(run(addr.to_string()).success());
+
+    let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let dead = closed.local_addr().unwrap();
+    drop(closed);
+    assert_eq!(run(dead.to_string()).code(), Some(1));
+}

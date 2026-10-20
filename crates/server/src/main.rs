@@ -5,6 +5,12 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Usado pelo healthcheck do Docker: a imagem não tem curl.
+    if std::env::args().nth(1).as_deref() == Some("--healthcheck") {
+        let port = server::health_port(std::env::var("BIND").ok().as_deref());
+        std::process::exit(i32::from(!server::healthcheck(port).await));
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
