@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, start_date, end_date FROM ritmo_weeks\n         WHERE start_date > ? ORDER BY start_date LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "start_date",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "end_date",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2d65d7cb4b83f93dd09b47042fb90b6b5f57cc7008e3d8ea93c2e9fc0e56aa72"
+}

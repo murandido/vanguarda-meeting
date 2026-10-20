@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT login, confirmed_at FROM ritmo_commitments WHERE week_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "login",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "confirmed_at",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "8248251867185c25203368e4a0ec3920d51b05187511cc329bd995bb466a7a1e"
+}

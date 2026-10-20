@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT login, task_id FROM ritmo_commitment_tasks WHERE week_id = ? ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "login",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "task_id",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "6c2ba2fe5670fc2c0c16203dc6723529d99e0963d1c4e7f352441063f09662bb"
+}

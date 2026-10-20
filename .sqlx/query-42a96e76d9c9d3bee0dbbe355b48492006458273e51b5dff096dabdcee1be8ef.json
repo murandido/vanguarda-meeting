@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT t.id, t.week_id, t.owner, t.project_id, p.name AS project_name,\n                p.color AS project_color, t.title, t.size, t.status\n         FROM ritmo_tasks t JOIN ritmo_projects p ON p.id = t.project_id\n         WHERE t.id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "week_id",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "owner",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "project_id",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "project_name",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "project_color",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "size",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "status",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "42a96e76d9c9d3bee0dbbe355b48492006458273e51b5dff096dabdcee1be8ef"
+}

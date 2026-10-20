@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT login, updated_at AS \"confirmed_at!\" FROM ritmo_checkins WHERE day = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "login",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "confirmed_at!",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "6968571289b28e0826d846d602bffe31a801edd8a494aecef73c60320621d94f"
+}
