@@ -1,10 +1,12 @@
 //! Servidor do Vanguarda: páginas HTMX, relay WebSocket dos quadros e SQLite.
 
 pub mod auth;
+mod boards;
 pub mod db;
 mod pages;
 pub mod ritmo;
 mod rooms;
+mod startup;
 
 use std::{
     path::PathBuf,
@@ -22,7 +24,8 @@ use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
 
 pub use auth::AuthConfig;
-pub use rooms::Rooms;
+pub use rooms::{MAX_MESSAGE_BYTES, RoomTiming, Rooms};
+pub use startup::{Config, serve};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -45,6 +48,13 @@ impl AppState {
             clock: Clock::default(),
             ritmo: ritmo::Events::default(),
         }
+    }
+
+    /// Troca as salas (os testes usam tempos curtos de ping e salvamento).
+    #[must_use]
+    pub fn with_rooms(mut self, rooms: Rooms) -> Self {
+        self.rooms = rooms;
+        self
     }
 }
 
@@ -99,6 +109,11 @@ pub fn app(state: AppState, assets: &Assets) -> Router {
         .route("/b/{board}", get(pages::board))
         .route("/health", get(|| async { "ok" }))
         .route("/ws/{board}", get(rooms::ws_handler))
+        // Cartazes: lista de quadros (CA-09).
+        .route("/cartazes", get(boards::list).post(boards::create))
+        .route("/cartazes/{board}/renomear", post(boards::rename))
+        .route("/cartazes/{board}/arquivar", post(boards::archive))
+        .route("/cartazes/{board}/desarquivar", post(boards::unarchive))
         .route("/login", get(auth::login_page))
         .route("/logout", post(auth::logout))
         .route("/auth/github", get(auth::github_start))

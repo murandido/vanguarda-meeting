@@ -27,11 +27,16 @@ async fn index_renders_both_modules_and_user() {
     assert!(body.contains("Ritmo"));
     assert!(body.contains("/static/htmx.min.js"));
     assert!(body.contains("<span>ana</span>"));
+    // A lista de quadros vem por HTMX.
+    assert!(body.contains(r#"hx-get="/cartazes""#));
 }
 
 #[tokio::test]
 async fn board_page_validates_name_and_carries_user() {
-    let (app, cookie) = logged_in().await;
+    let pool = memory_db().await;
+    common::create_board(&pool, "reuniao-1").await;
+    let app = router(pool, dev_auth());
+    let cookie = dev_session(&app, "ana").await;
     let res = get(&app, "/b/reuniao-1", Some(&cookie)).await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_text(res).await;

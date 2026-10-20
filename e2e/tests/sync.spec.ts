@@ -1,27 +1,7 @@
 // Gate da Fase 0: dois usuários (contextos separados) no mesmo quadro
 // enxergam criação, movimento e persistência dos post-its via Loro + WS.
-import { expect, test, type Browser, type Page } from "@playwright/test";
-import { abrirQuadro, ehPostit, pixel, quadroUnico } from "./canvas";
-
-/** Cria dois "usuários" em contextos isolados (localStorage separado). */
-async function doisUsuarios(browser: Browser, quadro: string) {
-  const ctxA = await browser.newContext();
-  const ctxB = await browser.newContext();
-  const a = await ctxA.newPage();
-  const b = await ctxB.newPage();
-  await Promise.all([abrirQuadro(a, quadro, "ana"), abrirQuadro(b, quadro, "bia")]);
-  return {
-    a,
-    b,
-    fechar: async () => {
-      await ctxA.close();
-      await ctxB.close();
-    },
-  };
-}
-
-const esperaPostit = (page: Page, x: number, y: number) =>
-  expect.poll(async () => ehPostit(await pixel(page, x, y)), { timeout: 5_000 });
+import { expect, test } from "@playwright/test";
+import { doisUsuarios, esperaPostit, pixelsColoridos, quadroUnico } from "./canvas";
 
 test("criar, mover e persistir post-it entre dois usuários", async ({ browser }) => {
   const quadro = quadroUnico();
@@ -68,19 +48,10 @@ test("presença: cursor de A aparece no canvas de B", async ({ browser }) => {
   try {
     const [x, y] = [600, 400];
 
-    // Conta pixels não transparentes numa caixa logo abaixo/à direita do
-    // ponteiro, onde o triângulo do cursor é desenhado (x..x+12, y..y+12).
-    const pixelsDesenhados = () =>
-      b.evaluate(
-        ([cx, cy]) => {
-          const c = document.getElementById("board") as HTMLCanvasElement;
-          const d = c.getContext("2d")!.getImageData(cx, cy, 14, 14).data;
-          let n = 0;
-          for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
-          return n;
-        },
-        [x, y] as const,
-      );
+    // Conta pixels coloridos numa caixa logo abaixo/à direita do ponteiro,
+    // onde o triângulo do cursor é desenhado (x..x+12, y..y+12). A grade de
+    // pontos do fundo é cinza e não conta.
+    const pixelsDesenhados = () => pixelsColoridos(b, x, y);
 
     expect(await pixelsDesenhados()).toBe(0);
 
