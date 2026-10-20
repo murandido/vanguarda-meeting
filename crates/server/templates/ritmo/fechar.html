@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Fechar semana · Ritmo{% endblock %}
+{% block body %}
+<main class="ritmo">
+  <header class="top">
+    <h1><a href="/ritmo">Ritmo</a> · Fechar semana</h1>
+    {% include "_user.html" %}
+  </header>
+  <p id="aviso" class="error" role="alert" hidden></p>
+  <h2>Semana {{ label }}</h2>
+  {% if !can_close %}
+  <p class="hint">A semana pode ser fechada a partir de {{ open_from }}, no dia da reunião. Por enquanto, é só uma prévia.</p>
+  {% endif %}
+
+  {% for p in people %}
+  <section class="resumo" data-login="{{ p.login }}">
+    <h3>{% if p.mine %}Você{% else %}{{ p.login }}{% endif %}
+      {% if let Some(c) = p.closed %}<small class="fechada">fechou {{ c }}</small>{% else %}<small class="hint">ainda não fechou</small>{% endif %}
+    </h3>
+    <dl class="numeros">
+      <div><dt>Prometido</dt><dd>{{ p.promised }}</dd></div>
+      <div><dt>Feito do prometido</dt><dd>{{ p.promised_done }}{% if let Some(pc) = p.percent %} <small>({{ pc }}%)</small>{% endif %}</dd></div>
+      <div><dt>Extras feitos</dt><dd>{{ p.extras_done }}</dd></div>
+      <div><dt>Travadas</dt><dd>{{ p.blocked.len() }}</dd></div>
+      {% if p.closed.is_some() %}
+      <div><dt>Levadas</dt><dd>{{ p.carried }}</dd></div>
+      <div><dt>Descartadas</dt><dd>{{ p.dropped }}</dd></div>
+      {% endif %}
+    </dl>
+    {% if !p.blocked.is_empty() %}
+    <p class="travadas">Travaram na semana: {% for b in p.blocked %}{% if !loop.first %}, {% endif %}{{ b }}{% endfor %}</p>
+    {% endif %}
+
+    {% if !p.outcomes.is_empty() %}
+    <ul class="destinos">
+      {% for o in p.outcomes %}
+      <li data-cor="{{ o.color }}" data-outcome="{{ o.key }}"><span class="titulo">{{ o.title }}</span> <small>{{ o.label }}{% if o.promised %} · prometida{% endif %}{% if o.blocked %} · travou{% endif %}</small></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if p.mine && p.closed.is_none() && can_close %}
+    <form id="form-fechar" class="fechar" hx-post="/ritmo/semana/fechar" hx-swap="none">
+      <input type="hidden" name="semana" value="{{ semana }}">
+      {% if p.unfinished.is_empty() %}
+      <p>Tudo feito. Bora fechar!</p>
+      {% else %}
+      <p>O que fazer com cada tarefa não concluída?</p>
+      {% for t in p.unfinished %}
+      <fieldset class="item" data-cor="{{ t.color }}" data-task="{{ t.id }}">
+        <legend>{{ t.title }} <small>{{ t.project }} · {{ t.column }}</small></legend>
+        <div class="opcoes">
+          <label><input type="radio" name="destino-{{ t.id }}" value="levar" required> levar para a próxima</label>
+          <label><input type="radio" name="destino-{{ t.id }}" value="descartar"> descartar</label>
+        </div>
+      </fieldset>
+      {% endfor %}
+      <p class="linha">
+        <button type="submit" name="todas" value="levar" formnovalidate>Levar todas</button>
+        <button type="submit" name="todas" value="descartar" formnovalidate>Descartar todas</button>
+      </p>
+      {% endif %}
+      <p class="linha">
+        <button type="submit" class="primary">Fechar semana</button>
+        <a href="/ritmo?semana={{ semana }}">Voltar</a>
+      </p>
+    </form>
+    {% endif %}
+  </section>
+  {% endfor %}
+</main>
+<script src="/static/ritmo.js" defer></script>
+{% endblock %}
