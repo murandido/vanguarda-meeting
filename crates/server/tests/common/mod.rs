@@ -85,3 +85,22 @@ pub async fn dev_session(router: &Router, login: &str) -> String {
         .find(|c| c.starts_with("vanguarda_session="))
         .expect("cookie de sessão")
 }
+
+/// Roteador com relógio fixo em `secs` (ajustável pelo [`server::Clock`]).
+pub fn router_at(pool: SqlitePool, auth: AuthConfig, secs: i64) -> (Router, server::Clock) {
+    let mut state = AppState::new(pool, auth);
+    state.clock = server::Clock::fixed(secs);
+    let clock = state.clock.clone();
+    (app(state, &Assets::default()), clock)
+}
+
+/// POST de formulário como o HTMX faz (com `HX-Request: true`).
+pub async fn post_htmx(router: &Router, path: &str, cookie: &str, form: &str) -> Response<Body> {
+    let req = Request::post(path)
+        .header(header::COOKIE, cookie)
+        .header("hx-request", "true")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(form.to_owned()))
+        .unwrap();
+    send(router, req).await
+}

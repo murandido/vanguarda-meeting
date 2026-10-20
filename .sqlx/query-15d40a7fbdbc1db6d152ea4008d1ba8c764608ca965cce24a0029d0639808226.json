@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ritmo_projects (owner, name, color, created_at) VALUES (?, ?, ?, ?)\n         ON CONFLICT (owner, name) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "15d40a7fbdbc1db6d152ea4008d1ba8c764608ca965cce24a0029d0639808226"
+}

@@ -11,3 +11,55 @@ body { margin: 0; }
 .user { display: flex; align-items: center; gap: .5rem; margin: 0; }
 .error { color: crimson; }
 .button { display: inline-block; padding: .5rem 1rem; border: 1px solid; border-radius: 6px; text-decoration: none; }
+
+/* ---------- Ritmo ---------- */
+.ritmo { max-width: 72rem; margin: 1rem auto 3rem; padding: 0 1rem; }
+.ritmo h1 { font-size: 1.3rem; }
+.ritmo h1 a { color: inherit; }
+.ritmo button, .ritmo input, .ritmo select { font: inherit; min-height: 2.25rem; }
+.ritmo .hint { color: GrayText; font-size: .9em; }
+.linha { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.linha input[name="titulo"], .linha input[name="nome"] { flex: 1 1 14rem; min-width: 0; }
+.tamanhos { display: inline-flex; gap: .5rem; }
+.button.primary, button.primary { background: #4c6ef5; color: white; border: 1px solid #4c6ef5;
+  border-radius: 6px; padding: .5rem 1rem; }
+.semana { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: .5rem; }
+.semana h2 { margin: .5rem 0; font-size: 1.1rem; text-align: center; }
+.semana [rel="next"] { justify-self: end; }
+.acoes-semana { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.filtro { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 1rem; }
+.filtro a { padding: .2rem .6rem; border: 1px solid GrayText; border-radius: 999px; text-decoration: none;
+  color: inherit; border-left: .5rem solid var(--cor, GrayText); }
+.filtro a[aria-current] { background: color-mix(in srgb, CanvasText 12%, Canvas); font-weight: 600; }
+.raia { border: 1px solid color-mix(in srgb, GrayText 50%, transparent); border-radius: 10px;
+  padding: .5rem .75rem; margin-bottom: 1rem; }
+.raia > header { display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; justify-content: space-between; }
+.raia h3 { margin: .25rem 0; }
+.prometido { font-size: .9em; }
+.colunas { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .75rem; }
+.coluna h4 { margin: .5rem 0; font-size: .95rem; }
+.coluna ul, .feed ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+.card { display: grid; gap: .25rem; padding: .5rem .6rem; border-radius: 6px;
+  background: color-mix(in srgb, var(--cor, GrayText) 12%, Canvas); border-left: 4px solid var(--cor, GrayText); }
+.card .titulo { overflow-wrap: anywhere; }
+.card .meta { display: flex; flex-wrap: wrap; gap: .4rem; font-size: .8em; color: GrayText; }
+.card .tamanho, .selo { padding: 0 .35rem; border: 1px solid; border-radius: 4px; }
+.selo { color: #2b8a3e; }
+.card .mover { display: flex; gap: .4rem; justify-content: flex-end; }
+.card .mover button { min-width: 2.5rem; }
+.card .apagar { margin-left: auto; order: -1; }
+.feed { margin-top: 1rem; }
+.feed li { border-left: 4px solid var(--cor, GrayText); padding-left: .5rem; }
+.feed .status { font-weight: 600; }
+.feed .status[data-status="advanced"] { color: #2b8a3e; }
+.feed .status[data-status="blocked"] { color: crimson; }
+.feed .nota { color: GrayText; }
+.config { margin-top: 2rem; }
+.config form { margin: .75rem 0; }
+.checkin .item { border: 1px solid color-mix(in srgb, GrayText 50%, transparent); border-left: 4px solid var(--cor, GrayText);
+  border-radius: 8px; margin: 0 0 .75rem; display: grid; gap: .5rem; }
+.checkin .opcoes { display: flex; flex-wrap: wrap; gap: .5rem; }
+.checkin .opcoes label { display: inline-flex; gap: .3rem; align-items: center; padding: .35rem .6rem;
+  border: 1px solid GrayText; border-radius: 999px; }
+.checkin .opcoes label:has(input:checked) { background: color-mix(in srgb, #4c6ef5 20%, Canvas); }
+.checkin input[name^="nota-"] { width: 100%; box-sizing: border-box; }

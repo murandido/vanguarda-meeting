@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, start_date, end_date FROM ritmo_weeks WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_weeks",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "start_date",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_weeks",
+            "name": "start_date"
+          }
+        }
+      },
+      {
+        "name": "end_date",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_weeks",
+            "name": "end_date"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "90642e2da4a7fe9f35d0d5db310306ee057752b528da0f92eea43685fa0b92c1"
+}

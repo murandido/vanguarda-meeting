@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM ritmo_checkin_items WHERE checkin_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "2953748bf59eef4d5422e10276a535a2f4638a55482ed8060ff6aaa871ae80a3"
+}

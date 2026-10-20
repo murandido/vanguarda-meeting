@@ -41,6 +41,11 @@ pela home (`/b/{id}` desconhecido dá 404; arquivado, 410). Use
 `http://127.0.0.1:3000` (e não `localhost`): o WebSocket só aceita `Origin`
 igual a `PUBLIC_URL`.
 
+O Ritmo fica em `/ritmo`: crie um projeto em "Projetos e configurações", adicione
+tarefas, confirme a semana e faça o check-in do dia em `/ritmo/checkin`. A outra
+janela atualiza sozinha (SSE em `/ritmo/events`). A semana vira no fim do dia da
+reunião (padrão: terça, horário de Brasília), configurável na própria página.
+
 ### Variáveis do servidor
 
 | Variável | Padrão | Para quê |
