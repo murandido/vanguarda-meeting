@@ -5,7 +5,8 @@
   <a href="/">Vanguarda</a>
   <span>Cartazes / <strong>{{ board }}</strong></span>
   <span id="status" data-state="connecting">conectando…</span>
-  <span class="hint">duplo clique cria · arraste para mover</span>
+  <button id="zoom" type="button" title="Zoom — clique ou Shift+0 volta a 100%, Shift+1 enquadra tudo">100%</button>
+  <span class="hint">duplo clique cria · arraste move · espaço+arraste ou rolagem navega · Ctrl+roda ou pinça: zoom</span>
   {% include "_user.html" %}
 </header>
 <canvas id="board" data-board="{{ board }}" data-user="{{ user }}"></canvas>
