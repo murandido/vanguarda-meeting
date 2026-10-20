@@ -34,6 +34,28 @@ impl JsBoard {
         Ok(self.0.move_shape(id, x, y)?)
     }
 
+    /// Reverts this user's last step (never the partner's). The change goes
+    /// out through `takePendingUpdate()` like any edit.
+    pub fn undo(&mut self) -> bool {
+        self.0.undo()
+    }
+
+    pub fn redo(&mut self) -> bool {
+        self.0.redo()
+    }
+
+    /// Edits until `endGroup()` undo as one step (a drag, a resize, a text
+    /// editing session). See `history.rs` for the policy.
+    #[wasm_bindgen(js_name = beginGroup)]
+    pub fn begin_group(&mut self) {
+        self.0.begin_group();
+    }
+
+    #[wasm_bindgen(js_name = endGroup)]
+    pub fn end_group(&mut self) {
+        self.0.end_group();
+    }
+
     pub fn import(&mut self, bytes: &[u8]) -> Result<(), JsError> {
         Ok(self.0.import(bytes)?)
     }
