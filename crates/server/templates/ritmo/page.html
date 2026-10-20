@@ -7,14 +7,14 @@
     {% include "_user.html" %}
   </header>
   <p id="aviso" class="error" role="alert" hidden></p>
+  <p id="comemoracao" class="comemoracao" role="status" aria-live="polite" hidden></p>
 
-  {% if q.editable %}
+  {% if q.can_add %}
   <section class="nova">
     {% if my_projects.is_empty() %}
     <p>Crie um projeto (em “Projetos e configurações”) para começar a adicionar tarefas.</p>
     {% else %}
-    <form id="nova-tarefa" class="linha" hx-post="/ritmo/tarefas" hx-swap="none"
-          hx-on::after-request="if (event.detail.successful) { this.reset(); this.titulo.focus(); }">
+    <form id="nova-tarefa" class="linha" hx-post="/ritmo/tarefas" hx-swap="none">
       <input type="hidden" name="semana" value="{{ q.semana }}">
       <input name="titulo" required maxlength="120" placeholder="Nova tarefa da semana" aria-label="Título da tarefa">
       <select name="projeto" aria-label="Projeto">
@@ -53,6 +53,30 @@
       <button>Salvar</button>
     </form>
     <p class="hint">A semana vira no fim de {{ meeting_label }}. Mudar o dia vale para as semanas que ainda não começaram.</p>
+
+    <h3>Pausas</h3>
+    <p class="hint">Viagem ou doença? Combine a pausa antes: os dias pausados não quebram nem aumentam o streak.</p>
+    <form id="nova-pausa" class="linha" hx-post="/ritmo/pausas" hx-swap="none">
+      <label>De <input type="date" name="inicio" min="{{ tomorrow }}" value="{{ tomorrow }}" required></label>
+      <label>até <input type="date" name="fim" min="{{ tomorrow }}" value="{{ tomorrow }}" required></label>
+      <input name="motivo" maxlength="60" placeholder="Motivo (opcional)" aria-label="Motivo da pausa">
+      <button>Marcar pausa</button>
+    </form>
+    {% if !pauses.is_empty() %}
+    <ul class="pausas">
+      {% for p in pauses %}
+      <li data-login="{{ p.login }}">
+        <span>{% if p.mine %}Você{% else %}{{ p.login }}{% endif %}: {{ p.label }}{% if !p.reason.is_empty() %} — {{ p.reason }}{% endif %}</span>
+        {% if p.can_cancel %}
+        <button hx-post="/ritmo/pausas/{{ p.id }}/cancelar" hx-swap="none" hx-confirm="Cancelar esta pausa?">Cancelar</button>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <h3>Comemorações</h3>
+    <label class="som"><input type="checkbox" id="som"> Tocar um som ao concluir tarefas e check-ins</label>
   </details>
 </main>
 <script src="/static/ritmo.js" defer></script>

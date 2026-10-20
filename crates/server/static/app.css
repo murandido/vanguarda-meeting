@@ -65,3 +65,50 @@ body { margin: 0; }
   border: 1px solid GrayText; border-radius: 999px; }
 .checkin .opcoes label:has(input:checked) { background: color-mix(in srgb, #4c6ef5 20%, Canvas); }
 .checkin input[name^="nota-"] { width: 100%; box-sizing: border-box; }
+
+/* Streaks (KB-06) */
+.streaks { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
+.streak { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem; margin: 0; padding: .35rem .7rem;
+  border: 1px solid color-mix(in srgb, GrayText 50%, transparent); border-radius: 999px; }
+.streak .dias { font-size: 1.15em; }
+.streak .freezes, .streak .estado { color: GrayText; font-size: .85em; }
+.streak[data-status="feito"] { border-color: #f59f00; background: color-mix(in srgb, #f59f00 10%, Canvas); }
+.streak[data-status="pausa"] { border-style: dashed; }
+.streak.dupla { font-weight: 600; }
+.streaks-home { display: flex; flex-wrap: wrap; gap: .5rem; }
+.streaks-home .streak { padding: .2rem .6rem; }
+.pausas { list-style: none; padding: 0; display: grid; gap: .4rem; }
+.pausas li { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.config h3 { margin: 1.25rem 0 .25rem; font-size: 1rem; }
+.config input[type="date"] { max-width: 100%; }
+.config .linha label { display: inline-flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+
+/* Week closing (KB-07) */
+.fechada { font-size: .9em; color: #2b8a3e; }
+.selo.levada { color: #1971c2; }
+.aviso-fechar { margin: .25rem 0; }
+.resumo { border: 1px solid color-mix(in srgb, GrayText 50%, transparent); border-radius: 10px;
+  padding: .5rem .75rem; margin-bottom: 1rem; }
+.resumo h3 { display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; }
+.numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: .5rem; margin: .5rem 0; }
+.numeros div { padding: .4rem .6rem; border-radius: 6px; background: color-mix(in srgb, CanvasText 6%, Canvas); }
+.numeros dt { font-size: .8em; color: GrayText; }
+.numeros dd { margin: 0; font-size: 1.3em; font-weight: 600; }
+.travadas { color: crimson; overflow-wrap: anywhere; }
+.destinos { list-style: none; padding: 0; display: grid; gap: .3rem; }
+.destinos li { border-left: 4px solid var(--cor, GrayText); padding-left: .5rem; overflow-wrap: anywhere; }
+.destinos li[data-outcome="dropped"] .titulo { text-decoration: line-through; color: GrayText; }
+.fechar .item { border: 1px solid color-mix(in srgb, GrayText 50%, transparent); border-left: 4px solid var(--cor, GrayText);
+  border-radius: 8px; margin: 0 0 .75rem; display: grid; gap: .5rem; min-width: 0; }
+.fechar legend { overflow-wrap: anywhere; }
+.fechar .opcoes { display: flex; flex-wrap: wrap; gap: .5rem; }
+.fechar .opcoes label { display: inline-flex; gap: .3rem; align-items: center; padding: .35rem .6rem;
+  border: 1px solid GrayText; border-radius: 999px; }
+.fechar .opcoes label:has(input:checked) { background: color-mix(in srgb, #4c6ef5 20%, Canvas); }
+
+/* Celebrations (KB-08) */
+.confete { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1000; }
+.comemoracao { position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%); z-index: 1001; margin: 0;
+  padding: .5rem 1rem; border-radius: 999px; background: CanvasText; color: Canvas; font-weight: 600;
+  max-width: calc(100vw - 2rem); box-sizing: border-box; }
+.comemoracao[hidden] { display: none; }
