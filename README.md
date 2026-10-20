@@ -38,6 +38,11 @@ Abra `/login`, entre como `ana` numa janela e `bia` numa janela anônima, e abra
 `/b/teste` nas duas: duplo clique cria um retângulo, arrastar move, e a outra
 janela acompanha.
 
+O Ritmo fica em `/ritmo`: crie um projeto em "Projetos e configurações", adicione
+tarefas, confirme a semana e faça o check-in do dia em `/ritmo/checkin`. A outra
+janela atualiza sozinha (SSE em `/ritmo/events`). A semana vira no fim do dia da
+reunião (padrão: terça, horário de Brasília), configurável na própria página.
+
 ### Variáveis do servidor
 
 | Variável | Padrão | Para quê |

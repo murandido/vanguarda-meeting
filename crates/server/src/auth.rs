@@ -108,7 +108,7 @@ pub struct CurrentUser {
     pub login: String,
 }
 
-fn now() -> i64 {
+pub(crate) fn now() -> i64 {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("relógio depois de 1970")
@@ -151,7 +151,10 @@ pub async fn require_user(State(state): State<AppState>, mut req: Request, next:
             req.extensions_mut().insert(CurrentUser { login });
             next.run(req).await
         }
-        Ok(None) if path.starts_with("/ws/") => StatusCode::UNAUTHORIZED.into_response(),
+        // WebSocket e SSE não seguem redirecionamento para a página de login.
+        Ok(None) if path.starts_with("/ws/") || path == "/ritmo/events" => {
+            StatusCode::UNAUTHORIZED.into_response()
+        }
         Ok(None) => Redirect::to("/login").into_response(),
         Err(e) => {
             tracing::error!("falha ao ler sessão: {e}");

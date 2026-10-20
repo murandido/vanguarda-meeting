@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Ritmo · Vanguarda{% endblock %}
+{% block body %}
+<main class="ritmo">
+  <header class="top">
+    <h1><a href="/">Vanguarda</a> · Ritmo</h1>
+    {% include "_user.html" %}
+  </header>
+  <p id="aviso" class="error" role="alert" hidden></p>
+
+  {% if q.editable %}
+  <section class="nova">
+    {% if my_projects.is_empty() %}
+    <p>Crie um projeto (em “Projetos e configurações”) para começar a adicionar tarefas.</p>
+    {% else %}
+    <form id="nova-tarefa" class="linha" hx-post="/ritmo/tarefas" hx-swap="none"
+          hx-on::after-request="if (event.detail.successful) { this.reset(); this.titulo.focus(); }">
+      <input type="hidden" name="semana" value="{{ q.semana }}">
+      <input name="titulo" required maxlength="120" placeholder="Nova tarefa da semana" aria-label="Título da tarefa">
+      <select name="projeto" aria-label="Projeto">
+        {% for p in my_projects %}
+        <option value="{{ p.id }}">{{ p.name }}</option>
+        {% endfor %}
+      </select>
+      <span class="tamanhos" role="radiogroup" aria-label="Tamanho">
+        <label><input type="radio" name="tamanho" value="P"> P</label>
+        <label><input type="radio" name="tamanho" value="M" checked> M</label>
+        <label><input type="radio" name="tamanho" value="G"> G</label>
+      </span>
+      <button>Adicionar</button>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% include "ritmo/_quadro.html" %}
+
+  <details class="config"{% if my_projects.is_empty() %} open{% endif %}>
+    <summary>Projetos e configurações</summary>
+    <form id="novo-projeto" class="linha" hx-post="/ritmo/projetos" hx-swap="none">
+      <input name="nome" required maxlength="40" placeholder="Nome do projeto" aria-label="Nome do projeto">
+      <input type="color" name="cor" value="#4c6ef5" aria-label="Cor do projeto">
+      <button>Criar projeto</button>
+    </form>
+    <form class="linha" hx-post="/ritmo/config" hx-swap="none">
+      <label>Dia da reunião
+        <select name="dia">
+          {% for d in days %}
+          <option value="{{ d.key }}"{% if d.selected %} selected{% endif %}>{{ d.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button>Salvar</button>
+    </form>
+    <p class="hint">A semana vira no fim de {{ meeting_label }}. Mudar o dia vale para as semanas que ainda não começaram.</p>
+  </details>
+</main>
+<script src="/static/ritmo.js" defer></script>
+{% endblock %}

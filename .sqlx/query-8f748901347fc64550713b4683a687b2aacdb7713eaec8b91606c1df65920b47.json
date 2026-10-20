@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ritmo_checkin_items (checkin_id, task_id, status, note)\n             VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "8f748901347fc64550713b4683a687b2aacdb7713eaec8b91606c1df65920b47"
+}

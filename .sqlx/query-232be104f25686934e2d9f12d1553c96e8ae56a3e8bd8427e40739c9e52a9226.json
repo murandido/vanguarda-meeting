@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ritmo_checkins (login, day, week_id, created_at, updated_at)\n           VALUES (?1, ?2, ?3, ?4, ?4)\n           ON CONFLICT (login, day) DO UPDATE SET updated_at = excluded.updated_at\n           RETURNING id AS \"id!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkins",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "232be104f25686934e2d9f12d1553c96e8ae56a3e8bd8427e40739c9e52a9226"
+}
