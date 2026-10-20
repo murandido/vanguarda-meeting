@@ -2,11 +2,11 @@
 #
 # Estrutura (cada job pesado compila o workspace uma única vez):
 #
-#   changes ─┬─ rust  fmt → clippy (nativo + wasm32) → sqlx → llvm-cov nextest
-#            │        (testes + cobertura numa passada só) → doctests
-#            ├─ web   wasm-pack + orçamento → build do servidor → Playwright
-#            └─ deny  cargo-deny (não compila nada)
-#   gates (matriz) — um job leve por gate, com o nome do status check
+#   changes ─┬─ rust   fmt → clippy (nativo + wasm32) → sqlx → llvm-cov nextest
+#            │         (testes + cobertura numa passada só) → doctests
+#            └─ web    wasm-pack + orçamento → build do servidor → Playwright
+#   gates (matriz)     um job leve por gate, com o nome do status check
+#   deny               cargo-deny (não compila nada; roda sempre)
 #
 # Os status checks obrigatórios da `main` são os `name:` dos jobs da matriz
 # `gates` (fmt, clippy, test, sqlx, coverage, wasm, e2e), mais `deny` e o
@@ -305,11 +305,10 @@ jobs:
           path: e2e/playwright-report
           retention-days: 7
 
-  # QG-06 — advisories, licenças, bans e fontes (ver deny.toml). Não compila.
+  # QG-06 — advisories, licenças, bans e fontes (ver deny.toml). Não compila
+  # e leva segundos, então roda sempre (inclusive em PRs só de documentação).
   deny:
     name: deny
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
