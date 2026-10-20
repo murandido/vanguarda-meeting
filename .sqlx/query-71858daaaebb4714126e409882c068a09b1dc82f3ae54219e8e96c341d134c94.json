@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ritmo_settings (key, value) VALUES (?, ?)\n         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "71858daaaebb4714126e409882c068a09b1dc82f3ae54219e8e96c341d134c94"
+}

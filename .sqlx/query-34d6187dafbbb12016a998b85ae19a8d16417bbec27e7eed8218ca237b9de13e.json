@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ritmo_commitment_tasks (week_id, login, task_id, project_id, title, size)\n         SELECT week_id, owner, id, project_id, title, size FROM ritmo_tasks\n         WHERE week_id = ?1 AND owner = ?2 ORDER BY id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "34d6187dafbbb12016a998b85ae19a8d16417bbec27e7eed8218ca237b9de13e"
+}

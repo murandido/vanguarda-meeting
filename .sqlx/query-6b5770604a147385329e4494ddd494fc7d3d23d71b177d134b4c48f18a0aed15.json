@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, owner, name, color FROM ritmo_projects ORDER BY owner, name COLLATE NOCASE",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_projects",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "owner",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_projects",
+            "name": "owner"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_projects",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "color",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_projects",
+            "name": "color"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6b5770604a147385329e4494ddd494fc7d3d23d71b177d134b4c48f18a0aed15"
+}

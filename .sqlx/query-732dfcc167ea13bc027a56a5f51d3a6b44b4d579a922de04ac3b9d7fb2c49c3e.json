@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT i.task_id, t.title, p.color AS project_color,\n                i.status, i.note\n         FROM ritmo_checkins c\n         JOIN ritmo_checkin_items i ON i.checkin_id = c.id\n         JOIN ritmo_tasks t ON t.id = i.task_id\n         JOIN ritmo_projects p ON p.id = t.project_id\n         WHERE c.login = ? AND c.day = ? ORDER BY t.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "task_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkin_items",
+            "name": "task_id"
+          }
+        }
+      },
+      {
+        "name": "title",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_tasks",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "project_color",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_projects",
+            "name": "color"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkin_items",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "note",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkin_items",
+            "name": "note"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "732dfcc167ea13bc027a56a5f51d3a6b44b4d579a922de04ac3b9d7fb2c49c3e"
+}

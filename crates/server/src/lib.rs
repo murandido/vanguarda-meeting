@@ -3,9 +3,16 @@
 pub mod auth;
 pub mod db;
 mod pages;
+pub mod ritmo;
 mod rooms;
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicI64, Ordering},
+    },
+};
 
 use axum::{
     Router, middleware,
@@ -23,6 +30,8 @@ pub struct AppState {
     pub rooms: Rooms,
     pub auth: Arc<AuthConfig>,
     pub http: reqwest::Client,
+    pub clock: Clock,
+    pub ritmo: ritmo::Events,
 }
 
 impl AppState {
@@ -33,7 +42,36 @@ impl AppState {
             rooms: Rooms::default(),
             auth: Arc::new(auth),
             http: reqwest::Client::new(),
+            clock: Clock::default(),
+            ritmo: ritmo::Events::default(),
         }
+    }
+}
+
+/// Relógio do servidor em segundos Unix. Os handlers leem o "agora" daqui,
+/// e não do sistema, para os testes fixarem datas.
+#[derive(Clone, Default)]
+pub struct Clock(Option<Arc<AtomicI64>>);
+
+impl Clock {
+    /// Relógio parado em `secs`, ajustável com [`Clock::set`].
+    #[must_use]
+    pub fn fixed(secs: i64) -> Self {
+        Self(Some(Arc::new(AtomicI64::new(secs))))
+    }
+
+    /// Muda a hora de um relógio fixo (no relógio do sistema, não faz nada).
+    pub fn set(&self, secs: i64) {
+        if let Some(t) = &self.0 {
+            t.store(secs, Ordering::Relaxed);
+        }
+    }
+
+    #[must_use]
+    pub fn now(&self) -> i64 {
+        self.0
+            .as_ref()
+            .map_or_else(auth::now, |t| t.load(Ordering::Relaxed))
     }
 }
 
@@ -66,6 +104,7 @@ pub fn app(state: AppState, assets: &Assets) -> Router {
         .route("/auth/github", get(auth::github_start))
         .route("/auth/github/callback", get(auth::github_callback))
         .route("/auth/dev/{login}", get(auth::dev_login))
+        .merge(ritmo::routes())
         .nest_service("/static", ServeDir::new(&assets.static_dir))
         .nest_service("/pkg", ServeDir::new(&assets.pkg_dir))
         .layer(middleware::from_fn_with_state(

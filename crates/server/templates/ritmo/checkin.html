@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Check-in de hoje · Ritmo{% endblock %}
+{% block body %}
+<main class="ritmo">
+  <header class="top">
+    <h1><a href="/ritmo">Ritmo</a> · Check-in</h1>
+    {% include "_user.html" %}
+  </header>
+  <p id="aviso" class="error" role="alert" hidden></p>
+  <h2>Check-in de hoje <small>{{ today }}</small></h2>
+  {% if items.is_empty() %}
+  <p>Nenhuma tarefa ativa nesta semana. <a href="/ritmo">Voltar para o quadro</a>.</p>
+  {% else %}
+  <form id="form-checkin" class="checkin" hx-post="/ritmo/checkin" hx-swap="none">
+    {% for it in items %}
+    <fieldset class="item" style="--cor: {{ it.color }}">
+      <legend>{{ it.title }} <small>{{ it.project }}</small></legend>
+      <div class="opcoes">
+        {% for o in it.options %}
+        <label><input type="radio" name="status-{{ it.id }}" value="{{ o.key }}"{% if o.checked %} checked{% endif %}> {{ o.label }}</label>
+        {% endfor %}
+      </div>
+      <input name="nota-{{ it.id }}" value="{{ it.note }}" maxlength="140" placeholder="1 linha (opcional)" aria-label="Nota sobre {{ it.title }}">
+    </fieldset>
+    {% endfor %}
+    <p class="linha">
+      <button class="primary">{% if existing %}Atualizar check-in{% else %}Salvar check-in{% endif %}</button>
+      <a href="/ritmo">Cancelar</a>
+    </p>
+  </form>
+  {% endif %}
+</main>
+<script src="/static/ritmo.js" defer></script>
+{% endblock %}

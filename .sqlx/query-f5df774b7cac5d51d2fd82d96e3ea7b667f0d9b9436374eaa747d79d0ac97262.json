@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ritmo_commitments (week_id, login, confirmed_at) VALUES (?, ?, ?)\n         ON CONFLICT (week_id, login) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "f5df774b7cac5d51d2fd82d96e3ea7b667f0d9b9436374eaa747d79d0ac97262"
+}
