@@ -63,3 +63,25 @@ async fn healthcheck_probe() {
     drop(closed);
     assert!(!server::healthcheck(dead).await);
 }
+
+#[test]
+fn health_port_from_bind() {
+    assert_eq!(server::health_port(Some("0.0.0.0:8080")), 8080);
+    assert_eq!(server::health_port(Some("lixo")), 3000);
+    assert_eq!(server::health_port(None), 3000);
+}
+
+#[tokio::test]
+async fn healthcheck_rejects_non_ok_answer() {
+    use tokio::io::AsyncWriteExt;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let _ = socket
+            .write_all(b"HTTP/1.1 503 Service Unavailable\r\n\r\nbusy")
+            .await;
+    });
+    assert!(!server::healthcheck(port).await);
+}

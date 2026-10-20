@@ -7,12 +7,8 @@ use tracing_subscriber::EnvFilter;
 async fn main() -> anyhow::Result<()> {
     // Usado pelo healthcheck do Docker: a imagem não tem curl.
     if std::env::args().nth(1).as_deref() == Some("--healthcheck") {
-        let port = std::env::var("BIND")
-            .ok()
-            .and_then(|b| b.parse::<SocketAddr>().ok())
-            .map_or(3000, |a| a.port());
-        let ok = server::healthcheck(port).await;
-        std::process::exit(i32::from(!ok));
+        let port = server::health_port(std::env::var("BIND").ok().as_deref());
+        std::process::exit(i32::from(!server::healthcheck(port).await));
     }
 
     tracing_subscriber::fmt()

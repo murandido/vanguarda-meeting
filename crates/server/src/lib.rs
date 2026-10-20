@@ -75,6 +75,13 @@ pub fn app(state: AppState, assets: &Assets) -> Router {
         .with_state(state)
 }
 
+/// Porta local do servidor a partir do `BIND` (padrão 3000).
+#[must_use]
+pub fn health_port(bind: Option<&str>) -> u16 {
+    bind.and_then(|b| b.parse::<std::net::SocketAddr>().ok())
+        .map_or(3000, |addr| addr.port())
+}
+
 /// Faz `GET /health` em `127.0.0.1:{port}` e diz se respondeu `200 ok`.
 pub async fn healthcheck(port: u16) -> bool {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
