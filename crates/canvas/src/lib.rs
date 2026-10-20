@@ -9,6 +9,9 @@ use loro::{ExportMode, LoroDoc, LoroMap, LoroValue, VersionVector};
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
+mod limits;
+pub use limits::{LimitError, Limits};
+
 const SHAPES: &str = "shapes";
 
 #[derive(Debug, thiserror::Error)]

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ board }} · Cartazes{% endblock %}
+{% block title %}{{ title }} · Cartazes{% endblock %}
 {% block body %}
 <header class="toolbar">
   <a href="/">Vanguarda</a>
-  <span>Cartazes / <strong>{{ board }}</strong></span>
+  <span>Cartazes / <strong>{{ title }}</strong></span>
   <span id="status" data-state="connecting">conectando…</span>
   <span class="hint">duplo clique cria · arraste para mover</span>
   {% include "_user.html" %}

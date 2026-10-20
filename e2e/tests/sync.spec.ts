@@ -1,7 +1,7 @@
 // Gate da Fase 0: dois usuários (contextos separados) no mesmo quadro
 // enxergam criação, movimento e persistência dos post-its via Loro + WS.
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { abrirQuadro, ehPostit, pixel, quadroUnico } from "./canvas";
+import { abrirQuadro, criarQuadro, ehPostit, entrar, pixel, quadroUnico } from "./canvas";
 
 /** Cria dois "usuários" em contextos isolados (localStorage separado). */
 async function doisUsuarios(browser: Browser, quadro: string) {
@@ -9,6 +9,8 @@ async function doisUsuarios(browser: Browser, quadro: string) {
   const ctxB = await browser.newContext();
   const a = await ctxA.newPage();
   const b = await ctxB.newPage();
+  await entrar(a, "ana");
+  expect(await criarQuadro(a, quadro)).toBe(quadro);
   await Promise.all([abrirQuadro(a, quadro, "ana"), abrirQuadro(b, quadro, "bia")]);
   return {
     a,

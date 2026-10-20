@@ -37,6 +37,20 @@ export async function entrar(page: Page, login: string): Promise<void> {
   await expect(page).toHaveURL("/");
 }
 
+/**
+ * Cria o quadro pelo mesmo POST que o HTMX faz na home. O título já é um
+ * slug válido, então o id do quadro é igual a ele. Criar um quadro que já
+ * existe gera outro id (`-2`), por isso só um dos usuários cria.
+ */
+export async function criarQuadro(page: Page, titulo: string): Promise<string> {
+  const res = await page.request.post("/cartazes", {
+    form: { titulo },
+    headers: { "HX-Request": "true" },
+  });
+  expect(res.status()).toBe(200);
+  return res.headers()["x-board-id"];
+}
+
 /** Entra como `login`, abre o quadro e espera o WebSocket ficar online. */
 export async function abrirQuadro(page: Page, quadro: string, login = "ana"): Promise<void> {
   await entrar(page, login);

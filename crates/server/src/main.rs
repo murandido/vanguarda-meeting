@@ -42,14 +42,42 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let pool = db::connect(&db_url).await?;
-    let router = app(AppState::new(pool, auth), &assets);
+    let state = AppState::new(pool, auth);
+    let (rooms, db) = (state.rooms.clone(), state.db.clone());
+    let router = app(state, &assets);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("ouvindo em http://{addr}");
     axum::serve(listener, router)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            tracing::info!("desligando: salvando quadros e fechando conexões");
+            // Fecha os WebSockets (senão o desligamento esperaria por eles) e
+            // salva o que ainda não foi salvo.
+            rooms.shutdown(&db).await;
         })
         .await?;
     Ok(())
+}
+
+/// Ctrl+C ou SIGTERM (o que o Docker manda no `docker stop`).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let term = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(_) => std::future::pending().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let term = std::future::pending::<()>();
+    tokio::select! {
+        () = ctrl_c => {}
+        () = term => {}
+    }
 }

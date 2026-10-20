@@ -7,20 +7,13 @@
   </header>
   <section>
     <h2>Cartazes</h2>
-    <form id="open-board">
-      <input name="board" value="teste" pattern="[a-z0-9-]{1,64}" required aria-label="Nome do quadro">
-      <button>Abrir quadro</button>
-    </form>
+    <div id="cartazes" hx-get="/cartazes" hx-trigger="load" hx-swap="outerHTML">
+      <p>Carregando quadros…</p>
+    </div>
   </section>
   <section>
     <h2>Ritmo</h2>
     <p>Em breve.</p>
   </section>
 </main>
-<script>
-  document.getElementById("open-board").addEventListener("submit", (e) => {
-    e.preventDefault();
-    location.href = "/b/" + new FormData(e.target).get("board");
-  });
-</script>
 {% endblock %}

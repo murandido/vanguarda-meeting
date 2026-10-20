@@ -1,0 +1,43 @@
+<div id="cartazes" hx-target="this" hx-swap="outerHTML">
+  {% if let Some(error) = error %}
+  <p class="error" role="alert">{{ error }}</p>
+  {% endif %}
+  <form class="novo-quadro" hx-post="/cartazes">
+    <input name="titulo" required maxlength="80" placeholder="Título do quadro" aria-label="Título do novo quadro">
+    <button>Novo quadro</button>
+  </form>
+  {% if active.is_empty() %}
+  <p class="vazio">Nenhum quadro ainda.</p>
+  {% else %}
+  <ul class="quadros">
+    {% for b in active %}
+    <li data-board="{{ b.id }}">
+      <a href="/b/{{ b.id }}">{{ b.title }}</a>
+      <time datetime="{{ b.updated_at }}" title="Última atualização">{{ b.updated_label }}</time>
+      <details>
+        <summary>Renomear</summary>
+        <form hx-post="/cartazes/{{ b.id }}/renomear">
+          <input name="titulo" value="{{ b.title }}" required maxlength="80" aria-label="Novo título de {{ b.title }}">
+          <button>Salvar</button>
+        </form>
+      </details>
+      <button hx-post="/cartazes/{{ b.id }}/arquivar">Arquivar</button>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if !archived.is_empty() %}
+  <details class="arquivados">
+    <summary>Arquivados ({{ archived.len() }})</summary>
+    <ul class="quadros">
+      {% for b in archived %}
+      <li data-board="{{ b.id }}">
+        <span>{{ b.title }}</span>
+        <time datetime="{{ b.updated_at }}" title="Última atualização">{{ b.updated_label }}</time>
+        <button hx-post="/cartazes/{{ b.id }}/desarquivar">Desarquivar</button>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>

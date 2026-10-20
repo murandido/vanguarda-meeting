@@ -108,7 +108,7 @@ pub struct CurrentUser {
     pub login: String,
 }
 
-fn now() -> i64 {
+pub(crate) fn now() -> i64 {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("relógio depois de 1970")

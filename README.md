@@ -34,9 +34,12 @@ Para desenvolver sem configurar o GitHub:
 DEV_LOGIN=1 ALLOWED_GITHUB_USERS=ana,bia cargo run -p server
 ```
 
-Abra `/login`, entre como `ana` numa janela e `bia` numa janela anônima, e abra
-`/b/teste` nas duas: duplo clique cria um retângulo, arrastar move, e a outra
-janela acompanha.
+Abra `/login`, entre como `ana` numa janela e `bia` numa janela anônima, crie
+um quadro em **Cartazes → Novo quadro** e abra-o nas duas: duplo clique cria um
+retângulo, arrastar move, e a outra janela acompanha. Só abrem quadros criados
+pela home (`/b/{id}` desconhecido dá 404; arquivado, 410). Use
+`http://127.0.0.1:3000` (e não `localhost`): o WebSocket só aceita `Origin`
+igual a `PUBLIC_URL`.
 
 ### Variáveis do servidor
 
@@ -44,7 +47,7 @@ janela acompanha.
 | --- | --- | --- |
 | `ALLOWED_GITHUB_USERS` | — (obrigatória) | Logins do GitHub convidados, separados por vírgula |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | — | OAuth App do GitHub; obrigatórias sem `DEV_LOGIN` |
-| `PUBLIC_URL` | `http://127.0.0.1:3000` | Base do callback: `{PUBLIC_URL}/auth/github/callback` |
+| `PUBLIC_URL` | `http://127.0.0.1:3000` | Base do callback (`{PUBLIC_URL}/auth/github/callback`) e única `Origin` aceita no WebSocket |
 | `COOKIE_SECURE` | `true` se `PUBLIC_URL` for https | Cookie de sessão só por HTTPS |
 | `DEV_LOGIN` | desligado | Libera `/auth/dev/{login}`; só aceito com `BIND` em loopback |
 | `DATABASE_URL` | `sqlite://vanguarda.db` | Banco SQLite |
