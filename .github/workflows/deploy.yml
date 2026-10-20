@@ -74,7 +74,7 @@ jobs:
       # Mesmo pkg que passou no E2E do CI. Num disparo manual, compila de novo.
       - name: baixar pkg do CI
         if: github.event_name == 'workflow_run'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: canvas-pkg
           path: dist/pkg
