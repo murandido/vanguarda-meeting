@@ -32,6 +32,22 @@ pub async fn send(router: &Router, req: Request<Body>) -> Response<Body> {
     router.clone().oneshot(req).await.unwrap()
 }
 
+/// POST de formulário como o HTMX faz (com `HX-Request: true`).
+pub async fn hx_post(router: &Router, path: &str, cookie: &str, form: &str) -> Response<Body> {
+    let req = Request::post(path)
+        .header(header::COOKIE, cookie)
+        .header("hx-request", "true")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(form.to_owned()))
+        .unwrap();
+    send(router, req).await
+}
+
+/// Cria um quadro direto no banco (id == título).
+pub async fn create_board(pool: &SqlitePool, id: &str) {
+    assert!(db::create_board(pool, id, id, "ana").await.unwrap());
+}
+
 pub async fn get(router: &Router, path: &str, cookie: Option<&str>) -> Response<Body> {
     let mut req = Request::get(path);
     if let Some(c) = cookie {

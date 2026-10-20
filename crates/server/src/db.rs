@@ -29,7 +29,9 @@ pub async fn load_snapshot(db: &SqlitePool, board_id: &str) -> sqlx::Result<Opti
     Ok(row.map(|r| r.snapshot))
 }
 
+/// Salva o snapshot e marca o quadro como atualizado agora.
 pub async fn save_snapshot(db: &SqlitePool, board_id: &str, snapshot: &[u8]) -> sqlx::Result<()> {
+    let mut tx = db.begin().await?;
     sqlx::query!(
         "INSERT INTO board_snapshots (board_id, snapshot) VALUES (?, ?)
          ON CONFLICT (board_id) DO UPDATE
@@ -38,9 +40,101 @@ pub async fn save_snapshot(db: &SqlitePool, board_id: &str, snapshot: &[u8]) -> 
         board_id,
         snapshot
     )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query!(
+        "UPDATE boards SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+        board_id
+    )
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await
+}
+
+/// Um quadro do Cartazes (tabela `boards`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoardRow {
+    pub id: String,
+    pub title: String,
+    pub created_by: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub archived_at: Option<String>,
+}
+
+impl BoardRow {
+    #[must_use]
+    pub fn is_archived(&self) -> bool {
+        self.archived_at.is_some()
+    }
+}
+
+/// Todos os quadros, do atualizado mais recentemente para o mais antigo.
+pub async fn list_boards(db: &SqlitePool) -> sqlx::Result<Vec<BoardRow>> {
+    sqlx::query_as!(
+        BoardRow,
+        "SELECT id, title, created_by, created_at, updated_at, archived_at
+         FROM boards ORDER BY updated_at DESC, id"
+    )
+    .fetch_all(db)
+    .await
+}
+
+pub async fn get_board(db: &SqlitePool, id: &str) -> sqlx::Result<Option<BoardRow>> {
+    sqlx::query_as!(
+        BoardRow,
+        "SELECT id, title, created_by, created_at, updated_at, archived_at
+         FROM boards WHERE id = ?",
+        id
+    )
+    .fetch_optional(db)
+    .await
+}
+
+/// Cria o quadro; devolve `false` se o id já existir.
+pub async fn create_board(
+    db: &SqlitePool,
+    id: &str,
+    title: &str,
+    created_by: &str,
+) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "INSERT INTO boards (id, title, created_by) VALUES (?, ?, ?)
+         ON CONFLICT (id) DO NOTHING",
+        id,
+        title,
+        created_by
+    )
     .execute(db)
     .await?;
-    Ok(())
+    Ok(done.rows_affected() == 1)
+}
+
+/// Renomeia; devolve `false` se o quadro não existir.
+pub async fn rename_board(db: &SqlitePool, id: &str, title: &str) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE boards SET title = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE id = ?",
+        title,
+        id
+    )
+    .execute(db)
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
+
+/// Arquiva ou desarquiva; devolve `false` se o quadro não existir.
+pub async fn set_board_archived(db: &SqlitePool, id: &str, archived: bool) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE boards
+         SET archived_at = CASE WHEN ? THEN COALESCE(archived_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) END
+         WHERE id = ?",
+        archived,
+        id
+    )
+    .execute(db)
+    .await?;
+    Ok(done.rows_affected() == 1)
 }
 
 /// Cria ou atualiza o usuário no login. `login` já vem em minúsculas.

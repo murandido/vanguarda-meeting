@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · Vanguarda{% endblock %}
+{% block body %}
+<main class="home">
+  <header class="top">
+    <h1>{{ title }}</h1>
+    {% include "_user.html" %}
+  </header>
+  <p>{{ message }}</p>
+  <p><a href="/">Voltar para o início</a></p>
+</main>
+{% endblock %}
