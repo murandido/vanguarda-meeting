@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT c.login, c.title, p.color AS project_color,\n                  c.promised AS \"promised: bool\", c.was_blocked AS \"was_blocked: bool\",\n                  c.outcome\n           FROM ritmo_week_closing_tasks c JOIN ritmo_projects p ON p.id = c.project_id\n           WHERE c.week_id = ? ORDER BY c.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "login",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closing_tasks",
+            "name": "login"
+          }
+        }
+      },
+      {
+        "name": "title",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closing_tasks",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "project_color",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_projects",
+            "name": "color"
+          }
+        }
+      },
+      {
+        "name": "promised: bool",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closing_tasks",
+            "name": "promised"
+          }
+        }
+      },
+      {
+        "name": "was_blocked: bool",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closing_tasks",
+            "name": "was_blocked"
+          }
+        }
+      },
+      {
+        "name": "outcome",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closing_tasks",
+            "name": "outcome"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "090ab4f71e769c4b3843fa8b56a8402a4c011569deec3e6741f0f2fd8bffc2c1"
+}

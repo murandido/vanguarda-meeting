@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ritmo_pauses (login, start_date, end_date, reason, created_at)\n         VALUES (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "dc1e6d22e7676aa7317523b960584c49bcd98ab6bd83fd005a8b5f237b3de747"
+}

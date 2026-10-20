@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT i.task_id\n         FROM ritmo_checkin_items i JOIN ritmo_tasks t ON t.id = i.task_id\n         WHERE t.week_id = ? AND t.owner = ? AND i.status = 'blocked'\n         ORDER BY i.task_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "task_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkin_items",
+            "name": "task_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6ab9f7e8c8341c9f6e6b873e2df9a7a5f0cd00aff8544bf09c220533468b310c"
+}

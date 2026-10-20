@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT login, day, kind FROM ritmo_streak_events ORDER BY day",
+  "describe": {
+    "columns": [
+      {
+        "name": "login",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_streak_events",
+            "name": "login"
+          }
+        }
+      },
+      {
+        "name": "day",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_streak_events",
+            "name": "day"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_streak_events",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "66a1d8a83a1b297558316607ff4be7fd872a934e3746721224084d5b795dc655"
+}
