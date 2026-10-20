@@ -85,3 +85,28 @@ async fn healthcheck_rejects_non_ok_answer() {
     });
     assert!(!server::healthcheck(port).await);
 }
+
+/// O binário com `--healthcheck`, como o Docker o chama em produção.
+/// `multi_thread`: o processo filho bloqueia uma thread enquanto o servidor
+/// do teste responde em outra.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn binary_healthcheck_exit_code() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = router(memory_db().await, dev_auth());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let run = |bind: String| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_server"))
+            .arg("--healthcheck")
+            .env("BIND", bind)
+            .status()
+            .unwrap()
+    };
+    assert!(run(addr.to_string()).success());
+
+    let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let dead = closed.local_addr().unwrap();
+    drop(closed);
+    assert_eq!(run(dead.to_string()).code(), Some(1));
+}
