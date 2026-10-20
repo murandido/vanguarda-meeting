@@ -1,0 +1,16 @@
+# Site do Vanguarda no Caddy do m80 (importado de /etc/caddy/sites/*.caddy).
+# Copiado para /opt/caddy-sites/ pelo deploy/deploy.sh.
+vanguarda-meeting.emioitenta.com.br {
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	# WebSocket do quadro e, no futuro, SSE do Ritmo: nada de buffer.
+	reverse_proxy vanguarda-meeting:3000 {
+		flush_interval -1
+	}
+}

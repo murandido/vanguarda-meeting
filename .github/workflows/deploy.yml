@@ -1,7 +1,17 @@
-# Deploy para a VPS Oracle Ampere (aarch64) — AINDA NÃO CONFIGURADO.
+# Deploy para a VPS Oracle Ampere (aarch64).
 #
-# Dispara quando o workflow "CI" termina com sucesso na `main`.
-# Hoje é apenas um placeholder inofensivo: não usa secrets nem altera nada.
+# Dispara quando o workflow "CI" termina com sucesso num push na `main`:
+#   1. compila o servidor para aarch64 (compilação cruzada, sem QEMU);
+#   2. reaproveita o pkg WASM do run de CI (artifact `canvas-pkg`);
+#   3. publica a imagem linux/arm64 no GHCR com a tag do commit;
+#   4. copia deploy/ para /opt/vanguarda e roda deploy/deploy.sh, que faz
+#      health check e rollback.
+#
+# Secrets (environment `production`):
+#   VPS_HOST         IP ou nome da VPS
+#   VPS_USER         usuário SSH (deploy)
+#   VPS_SSH_KEY      chave privada dedicada a este deploy
+#   VPS_KNOWN_HOSTS  linha(s) do known_hosts da VPS (ssh-keyscan)
 name: Deploy
 
 on:
@@ -9,26 +19,135 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/murandido/vanguarda-meeting
+  TARGET: aarch64-unknown-linux-gnu
+  SQLX_OFFLINE: true
+  CARGO_TERM_COLOR: always
+
 jobs:
+  image:
+    name: image
+    runs-on: ubuntu-24.04
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - id: meta
+        run: echo "tag=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ env.TARGET }}
+      - name: toolchain C para aarch64
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+      - name: compilar servidor (aarch64)
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
+          AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
+        run: cargo build --release --locked -p server --target "$TARGET"
+
+      # Mesmo pkg que passou no E2E do CI. Num disparo manual, compila de novo.
+      - name: baixar pkg do CI
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          name: canvas-pkg
+          path: dist/pkg
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: compilar pkg (disparo manual)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          rustup target add wasm32-unknown-unknown
+          curl -sSfL https://github.com/drager/wasm-pack/releases/download/v0.15.0/wasm-pack-v0.15.0-x86_64-unknown-linux-musl.tar.gz \
+            | tar -xz --strip-components=1 -C /usr/local/bin --wildcards '*/wasm-pack'
+          wasm-pack build crates/canvas --target web --release --out-dir ../../dist/pkg
+
+      - name: montar contexto da imagem
+        run: |
+          cp "target/$TARGET/release/server" dist/server
+          cp -r crates/server/static dist/static
+          rm -f dist/pkg/.gitignore
+          ls -la dist dist/pkg
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE }}:latest
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
   deploy:
     name: deploy
-    runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    needs: image
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://vanguarda-meeting.emioitenta.com.br
     steps:
-      # TODO(deploy):
-      #   1. Build do `server` para aarch64-unknown-linux-gnu — via `cross` ou
-      #      direto num runner ARM nativo (`runs-on: ubuntu-24.04-arm`).
-      #   2. Baixar o artifact `canvas-pkg` do run de CI
-      #      (github.event.workflow_run.id) em vez de recompilar o wasm.
-      #   3. `scp` do binário + crates/server/static + pkg para a VPS
-      #      (chave SSH e host em secrets do environment `production`).
-      #   4. Reiniciar a unit systemd do servidor (`systemctl restart ...`)
-      #      e fazer um health check.
-      - name: placeholder
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.image.outputs.tag }}
+          sparse-checkout: deploy
+      - name: chave SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
-          echo "Deploy para a VPS Oracle Ampere (aarch64) ainda não está configurado."
-          echo "CI ok no commit ${{ github.event.workflow_run.head_sha }} — nada a fazer por enquanto."
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+      - name: copiar deploy/ e subir
+        env:
+          TARGET_HOST: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+          TAG: ${{ needs.image.outputs.tag }}
+        run: |
+          ssh_opts=(-i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o BatchMode=yes)
+          scp "${ssh_opts[@]}" deploy/compose.yml deploy/deploy.sh deploy/vanguarda-meeting.caddy "$TARGET_HOST:/opt/vanguarda/"
+          # A tag é expandida aqui de propósito (é um SHA, sem caracteres especiais).
+          # shellcheck disable=SC2029
+          ssh "${ssh_opts[@]}" "$TARGET_HOST" "/opt/vanguarda/deploy.sh '$TAG'"
+      - name: health check público
+        run: |
+          for _ in $(seq 1 20); do
+            if curl -fsS --max-time 5 https://vanguarda-meeting.emioitenta.com.br/health; then exit 0; fi
+            sleep 3
+          done
+          echo "::warning::o app subiu na VPS, mas https://vanguarda-meeting.emioitenta.com.br/health não respondeu (Caddy do m80 já importa /opt/caddy-sites?)"

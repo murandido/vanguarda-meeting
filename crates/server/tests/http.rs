@@ -48,3 +48,18 @@ async fn static_assets_are_public() {
     assert_eq!(res.status(), StatusCode::OK);
     assert!(body_text(res).await.contains("takePendingUpdate"));
 }
+
+#[tokio::test]
+async fn healthcheck_probe() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = router(memory_db().await, dev_auth());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    assert!(server::healthcheck(port).await);
+
+    // Porta sem ninguém ouvindo.
+    let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let dead = closed.local_addr().unwrap().port();
+    drop(closed);
+    assert!(!server::healthcheck(dead).await);
+}

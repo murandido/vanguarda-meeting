@@ -58,3 +58,19 @@ Tudo roda no CI (`.github/workflows/ci.yml`) e bloqueia o merge na `main`:
 `bench` é só informativo. Títulos de PR seguem Conventional Commits.
 
 Mudou uma query SQL? Rode `cargo sqlx prepare --workspace` e commite `.sqlx/`.
+
+## Deploy
+
+Produção: <https://vanguarda-meeting.emioitenta.com.br>, na VPS `m80-loadtest`
+(Oracle Ampere, aarch64), ao lado do stack do m80.
+
+- Todo push na `main` com CI verde dispara `.github/workflows/deploy.yml`: compila
+  o servidor para aarch64, publica `ghcr.io/murandido/vanguarda-meeting:<sha>` e
+  roda `deploy/deploy.sh` na VPS (health check + rollback automático).
+- Na VPS, `/opt/vanguarda` guarda `compose.yml`, `.env` (segredos, `600`) e
+  `data/` (SQLite, dono `10001`). O site entra no Caddy do m80 por
+  `/opt/caddy-sites/vanguarda-meeting.caddy`.
+- Segredos do workflow ficam no environment `production` do GitHub:
+  `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`.
+- Convidar alguém: editar `ALLOWED_GITHUB_USERS` em `/opt/vanguarda/.env` e rodar
+  `docker compose -f /opt/vanguarda/compose.yml up -d` com `IMAGE_TAG` atual.

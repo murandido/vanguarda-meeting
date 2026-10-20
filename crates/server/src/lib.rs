@@ -74,3 +74,22 @@ pub fn app(state: AppState, assets: &Assets) -> Router {
         ))
         .with_state(state)
 }
+
+/// Faz `GET /health` em `127.0.0.1:{port}` e diz se respondeu `200 ok`.
+pub async fn healthcheck(port: u16) -> bool {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let check = async {
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await?;
+        stream
+            .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await?;
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await?;
+        Ok::<_, std::io::Error>(response)
+    };
+    match tokio::time::timeout(std::time::Duration::from_secs(3), check).await {
+        Ok(Ok(response)) => response.starts_with(b"HTTP/1.1 200") && response.ends_with(b"ok"),
+        _ => false,
+    }
+}
