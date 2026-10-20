@@ -12,6 +12,10 @@
 #   VPS_USER         usuário SSH (deploy)
 #   VPS_SSH_KEY      chave privada dedicada a este deploy
 #   VPS_KNOWN_HOSTS  linha(s) do known_hosts da VPS (ssh-keyscan)
+#
+# Variables (environment `production`):
+#   PUBLIC_URL       public base URL, e.g. https://vanguarda.example.com
+#                    (must match PUBLIC_URL in /opt/vanguarda/.env)
 name: Deploy
 
 on:
@@ -125,8 +129,16 @@ jobs:
     runs-on: ubuntu-24.04
     environment:
       name: production
-      url: https://vanguarda-meeting.emioitenta.com.br
+      url: ${{ vars.PUBLIC_URL }}
+    env:
+      PUBLIC_URL: ${{ vars.PUBLIC_URL }}
     steps:
+      - name: conferir configuração
+        run: |
+          if [[ ! "$PUBLIC_URL" =~ ^https://[A-Za-z0-9.-]+$ ]]; then
+            echo "::error::defina a variável PUBLIC_URL (https://host) no environment production"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -148,7 +160,7 @@ jobs:
         run: |
           ssh_opts=(-i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o BatchMode=yes)
           scp -r "${ssh_opts[@]}" \
-            deploy/compose.yml deploy/deploy.sh deploy/vanguarda-meeting.caddy \
+            deploy/compose.yml deploy/deploy.sh deploy/site.caddy.tmpl \
             deploy/backup.sh deploy/restore.sh deploy/systemd \
             "$TARGET_HOST:/opt/vanguarda/"
           # A tag é expandida aqui de propósito (é um SHA, sem caracteres especiais).
@@ -157,7 +169,7 @@ jobs:
       - name: health check público
         run: |
           for _ in $(seq 1 20); do
-            if curl -fsS --max-time 5 https://vanguarda-meeting.emioitenta.com.br/health; then exit 0; fi
+            if curl -fsS --max-time 5 "$PUBLIC_URL/health"; then exit 0; fi
             sleep 3
           done
-          echo "::warning::o app subiu na VPS, mas https://vanguarda-meeting.emioitenta.com.br/health não respondeu (Caddy do m80 já importa /opt/caddy-sites?)"
+          echo "::warning::o app subiu na VPS, mas $PUBLIC_URL/health não respondeu (o Caddy já importa o SITES_DIR?)"
