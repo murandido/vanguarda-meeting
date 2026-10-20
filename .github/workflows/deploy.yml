@@ -50,7 +50,7 @@ jobs:
     steps:
       - id: meta
         run: echo "tag=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.meta.outputs.tag }}
       - uses: dtolnay/rust-toolchain@stable
@@ -121,7 +121,7 @@ jobs:
       name: production
       url: https://vanguarda-meeting.emioitenta.com.br
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.image.outputs.tag }}
           sparse-checkout: deploy
