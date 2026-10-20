@@ -86,3 +86,4 @@ Produção: <https://vanguarda-meeting.emioitenta.com.br>, na VPS `m80-loadtest`
   `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`.
 - Convidar alguém: editar `ALLOWED_GITHUB_USERS` em `/opt/vanguarda/.env` e rodar
   `docker compose -f /opt/vanguarda/compose.yml up -d` com `IMAGE_TAG` atual.
+
