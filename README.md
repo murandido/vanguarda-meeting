@@ -74,3 +74,48 @@ Produção: <https://vanguarda-meeting.emioitenta.com.br>, na VPS `m80-loadtest`
   `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`.
 - Convidar alguém: editar `ALLOWED_GITHUB_USERS` em `/opt/vanguarda/.env` e rodar
   `docker compose -f /opt/vanguarda/compose.yml up -d` com `IMAGE_TAG` atual.
+
+### Backup e restauração
+
+RNF-05. `deploy/backup.sh` roda todo dia às 04:30 (horário de Brasília) pelo
+`vanguarda-backup.timer` do systemd, que o `deploy.sh` instala e ativa sozinho
+(units em `deploy/systemd/`; `Persistent=true` cobre a VPS desligada no horário).
+
+- **Como copia:** `VACUUM INTO` num contêiner descartável
+  `keinos/sqlite3` (fixado por tag e digest; a VPS não tem `sqlite3`), rodando
+  como `10001` e montando `data/`. No modo WAL a cópia lê um snapshot de uma
+  única transação, sem parar nem bloquear o app, e sai como um banco único
+  (sem `-wal`). Depois de compactado, o próprio `.gz` é descompactado e
+  conferido com `PRAGMA integrity_check`; só então substitui o anterior.
+- **Onde fica:** `/opt/vanguarda/backups/` (dono `deploy`, `700`):
+  `daily/vanguarda-AAAA-MM-DD.db.gz` (14 dias), `weekly/vanguarda-AAAA-Wss.db.gz`
+  (8 semanas ISO, a cópia mais recente de cada semana) e `pre-restore/` (10
+  últimas cópias feitas pelo `restore.sh`).
+- **Offsite (opcional, desligado):** criar `/opt/vanguarda/backup.env` com
+  `BACKUP_OFFSITE=rclone:<remoto:caminho>` ou `BACKUP_OFFSITE=scp:<usuario@host:caminho>`
+  envia a cópia diária para fora da VPS (a rotação lá fica por conta do destino).
+- **Operação:**
+
+  ```sh
+  systemctl list-timers vanguarda-backup.timer      # próxima execução
+  sudo systemctl start vanguarda-backup.service     # backup agora
+  journalctl -u vanguarda-backup.service -n 50      # logs
+  ls -l /opt/vanguarda/backups/daily
+  ```
+
+- **Restaurar:**
+
+  ```sh
+  /opt/vanguarda/restore.sh /opt/vanguarda/backups/daily/vanguarda-2026-10-20.db.gz
+  ```
+
+  O script confere o backup antes de tudo, pede para digitar `restaurar`
+  (ou `--yes`), copia o banco atual para `backups/pre-restore/` com o app no
+  ar, para o contêiner `vanguarda-meeting`, troca `data/vanguarda.db` (apagando
+  o `-wal`/`-shm` antigos), sobe o contêiner e espera o health check. Se o app
+  não ficar saudável, ele mostra o comando para voltar à cópia `pre-restore`.
+  Restaurar um banco com migrações mais novas que a imagem no ar não funciona:
+  use um backup da mesma versão ou mais antigo.
+- **Testar localmente:** os caminhos são configuráveis (`VANGUARDA_DIR`,
+  `DATA_DIR`, `BACKUP_DIR`, `DB_USER`, `APP_CONTAINER`; ver o cabeçalho dos
+  scripts), então dá para rodar os dois scripts contra um diretório qualquer.

@@ -2,7 +2,8 @@
 #
 # Sobe uma versão do Vanguarda na VPS, com rollback se ela não ficar saudável.
 # Roda em /opt/vanguarda, para onde o workflow de deploy copia este script,
-# o compose.yml e o vanguarda-meeting.caddy antes de chamá-lo.
+# o compose.yml, o vanguarda-meeting.caddy, backup.sh, restore.sh e systemd/
+# antes de chamá-lo.
 #
 # Uso: deploy.sh <tag-da-imagem>
 #
@@ -19,6 +20,8 @@ STATE_FILE="$DIR/.deploy-state"
 SITES_DIR=/opt/caddy-sites
 SITE_FILE=vanguarda-meeting.caddy
 CADDY=caddy-prod
+UNIT_DIR=/etc/systemd/system
+BACKUP_UNITS=(vanguarda-backup.service vanguarda-backup.timer)
 HEALTH_TIMEOUT=60
 
 log() { printf '%s  %s\n' "$(date '+%F %T')" "$*"; }
@@ -83,3 +86,27 @@ fi
 docker images ghcr.io/murandido/vanguarda-meeting --format '{{.Tag}}' \
   | grep -vxF -e "$TAG" -e "$previous" -e latest \
   | xargs -r -I{} docker rmi "ghcr.io/murandido/vanguarda-meeting:{}" >/dev/null 2>&1 || true
+
+# Backup diário (RNF-05): instala o timer do systemd só se as units mudaram.
+install -d -m 700 "$DIR/backups"
+units_changed=0
+for unit in "${BACKUP_UNITS[@]}"; do
+  if ! cmp -s "$DIR/systemd/$unit" "$UNIT_DIR/$unit"; then
+    sudo install -m 644 "$DIR/systemd/$unit" "$UNIT_DIR/$unit"
+    units_changed=1
+  fi
+done
+if [ "$units_changed" -eq 1 ]; then
+  sudo systemctl daemon-reload
+  # Primeira instalação (ou mudança nas units): roda um backup agora para
+  # validar o caminho inteiro; falha aqui derruba o deploy com o log.
+  log "units de backup atualizadas; rodando um backup de validação..."
+  if ! sudo systemctl start vanguarda-backup.service; then
+    sudo journalctl -u vanguarda-backup.service -n 30 --no-pager || true
+    die "o backup de validação falhou"
+  fi
+fi
+if ! systemctl is-enabled --quiet vanguarda-backup.timer || ! systemctl is-active --quiet vanguarda-backup.timer; then
+  sudo systemctl enable --now vanguarda-backup.timer
+  log "vanguarda-backup.timer ativo"
+fi

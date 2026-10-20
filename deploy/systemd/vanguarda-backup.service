@@ -1,0 +1,20 @@
+# Backup diário do SQLite do Vanguarda (RNF-05). Disparado por
+# vanguarda-backup.timer; instalado em /etc/systemd/system pelo deploy.sh.
+# Rodar na mão: sudo systemctl start vanguarda-backup.service
+# Logs: journalctl -u vanguarda-backup.service
+[Unit]
+Description=Backup do SQLite do Vanguarda
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+# Opcional: BACKUP_OFFSITE=rclone:... ou scp:... (ver backup.sh). Sem o
+# arquivo, o backup fica só na VPS.
+EnvironmentFile=-/opt/vanguarda/backup.env
+ExecStart=/opt/vanguarda/backup.sh
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=idle
