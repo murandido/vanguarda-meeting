@@ -50,3 +50,5 @@ mod tests {
         assert!(!is_valid_board_id(&"a".repeat(65)));
     }
 }
+
+pub fn   probe_fmt() {}
