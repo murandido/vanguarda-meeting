@@ -52,6 +52,12 @@ impl Date {
         Self(self.0 + n)
     }
 
+    /// Days from `earlier` to `self` (negative if `earlier` is later).
+    #[must_use]
+    pub fn days_since(self, earlier: Self) -> i64 {
+        self.0 - earlier.0
+    }
+
     #[must_use]
     pub fn weekday(self) -> Weekday {
         // 1970-01-01 foi uma quinta-feira.
@@ -220,6 +226,8 @@ mod tests {
         assert_eq!(d("1969-12-31"), Date(-1));
         assert_eq!(d("2000-03-01").add_days(-1), d("2000-02-29"));
         assert_eq!(d("2026-01-05").short(), "05/01");
+        assert_eq!(d("2026-03-01").days_since(d("2026-02-27")), 2);
+        assert_eq!(d("2026-02-27").days_since(d("2026-03-01")), -2);
         for bad in [
             "2026-02-29",
             "2026-13-01",

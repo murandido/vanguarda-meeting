@@ -12,6 +12,7 @@ use crate::{AppState, auth::CurrentUser, boards};
 #[template(path = "index.html")]
 struct Index {
     user: String,
+    streaks: Option<crate::ritmo::HomeCard>,
 }
 
 #[derive(Template)]
@@ -40,8 +41,15 @@ pub fn render(template: &impl Template) -> Response {
     }
 }
 
-pub async fn index(Extension(user): Extension<CurrentUser>) -> Response {
-    render(&Index { user: user.login })
+pub async fn index(
+    State(state): State<AppState>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
+    let streaks = crate::ritmo::home_card(&state, &user.login).await;
+    render(&Index {
+        user: user.login,
+        streaks,
+    })
 }
 
 pub async fn board(
