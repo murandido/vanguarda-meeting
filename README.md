@@ -60,7 +60,14 @@ reunião (padrão: terça, horário de Brasília), configurável na própria pá
 
 Tudo roda no CI (`.github/workflows/ci.yml`) e bloqueia o merge na `main`:
 `fmt`, `clippy`, `test`, `sqlx`, `deny`, `wasm`, `coverage`, `e2e`, `pr-title`.
-`bench` é só informativo. Títulos de PR seguem Conventional Commits.
+Títulos de PR seguem Conventional Commits (`pr-title.yml`); `bench.yml` é só
+informativo.
+
+O workspace compila só duas vezes por execução: o job `rust` roda fmt, clippy,
+sqlx, testes + cobertura (`cargo llvm-cov nextest`, uma passada) e doctests; o
+job `web` faz o build do wasm e roda o E2E. Cada gate vira um status check
+próprio pelo job `gates`. PRs que só mudam documentação (`*.md`, `docs/`) pulam
+a compilação e os gates passam direto.
 
 Mudou uma query SQL? Rode `cargo sqlx prepare --workspace` e commite `.sqlx/`.
 

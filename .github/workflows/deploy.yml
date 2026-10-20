@@ -114,6 +114,10 @@ jobs:
             ${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}
             ${{ env.IMAGE }}:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          # Camadas no cache do Actions: o `apt-get` da imagem roda sob QEMU
+          # (lento) e só muda quando o Dockerfile muda.
+          cache-from: type=gha,scope=image-arm64
+          cache-to: type=gha,scope=image-arm64,mode=max
 
   deploy:
     name: deploy

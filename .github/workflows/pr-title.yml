@@ -1,0 +1,28 @@
+# QG-10 — título do PR em Conventional Commits (o squash usa o título).
+#
+# Workflow separado do CI para que editar o título rode só esta checagem, em
+# vez de cancelar e refazer toda a compilação. O `name:` do job é status check
+# obrigatório da `main`.
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    name: pr-title
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
