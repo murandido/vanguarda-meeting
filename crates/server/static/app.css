@@ -65,3 +65,34 @@ body { margin: 0; }
   border: 1px solid GrayText; border-radius: 999px; }
 .checkin .opcoes label:has(input:checked) { background: color-mix(in srgb, #4c6ef5 20%, Canvas); }
 .checkin input[name^="nota-"] { width: 100%; box-sizing: border-box; }
+
+/* Cartazes: sticker tray, post-it color toolbar and inline text editor. */
+.tool { font: inherit; padding: .1rem .5rem; border: 1px solid GrayText; border-radius: 4px;
+  background: none; color: inherit; cursor: pointer; }
+.tool[aria-expanded="true"] { background: color-mix(in srgb, Highlight 25%, transparent); }
+.tray-wrap { position: relative; }
+.tray { position: absolute; top: calc(100% + .4rem); left: 0; display: grid;
+  grid-template-columns: repeat(6, 2.4rem); gap: .2rem; padding: .4rem; background: Canvas;
+  border: 1px solid GrayText; border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .15); }
+.tray[hidden], .floating[hidden], #postit-editor[hidden] { display: none; }
+.tray button { width: 2.4rem; height: 2.4rem; padding: 0; font-size: 1.5rem; line-height: 1; border: 0;
+  border-radius: 6px; background: none; cursor: pointer; }
+.tray button:hover, .tray button:focus-visible { background: color-mix(in srgb, GrayText 20%, transparent); }
+#board.stamping { cursor: crosshair; }
+.floating { position: fixed; left: 0; top: 0; z-index: 1; display: flex; gap: .3rem; padding: .3rem;
+  background: Canvas; border: 1px solid GrayText; border-radius: 999px; box-shadow: 0 4px 16px rgb(0 0 0 / .15); }
+.swatch { width: 1.5rem; height: 1.5rem; padding: 0; border: 1px solid rgb(0 0 0 / .2);
+  border-radius: 50%; cursor: pointer; }
+.swatch[aria-pressed="true"] { outline: 2px solid #0d99ff; outline-offset: 2px; }
+/* Keep in sync with POSTIT_COLORS in board.js. */
+.swatch[data-color="yellow"] { background: #ffe066; }
+.swatch[data-color="orange"] { background: #ffc078; }
+.swatch[data-color="pink"] { background: #faa2c1; }
+.swatch[data-color="purple"] { background: #d0bfff; }
+.swatch[data-color="blue"] { background: #a5d8ff; }
+.swatch[data-color="green"] { background: #b2f2bb; }
+/* Sized in world units and scaled with the camera by board.js. */
+#postit-editor { position: fixed; left: 0; top: 0; box-sizing: border-box; margin: 0; border: 0;
+  padding: 8px; resize: none; overflow: hidden; background: transparent; color: #1f1f1f;
+  font-family: system-ui, sans-serif; line-height: 1.25; white-space: pre-wrap;
+  overflow-wrap: anywhere; outline: none; transform-origin: 0 0; caret-color: #1f1f1f; }
