@@ -6,7 +6,13 @@
       {
         "name": "snapshot",
         "ordinal": 0,
-        "type_info": "Blob"
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "board_snapshots",
+            "name": "snapshot"
+          }
+        }
       }
     ],
     "parameters": {
