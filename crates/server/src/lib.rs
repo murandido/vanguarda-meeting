@@ -6,6 +6,7 @@ pub mod db;
 mod pages;
 pub mod ritmo;
 mod rooms;
+mod startup;
 
 use std::{
     path::PathBuf,
@@ -24,6 +25,7 @@ use tower_http::services::ServeDir;
 
 pub use auth::AuthConfig;
 pub use rooms::{MAX_MESSAGE_BYTES, RoomTiming, Rooms};
+pub use startup::{Config, serve};
 
 #[derive(Clone)]
 pub struct AppState {
