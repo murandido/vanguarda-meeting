@@ -9,18 +9,8 @@ const ctx = canvas.getContext("2d");
 const statusEl = document.getElementById("status");
 const boardId = canvas.dataset.board;
 
-const user = (() => {
-  try {
-    let name = localStorage.getItem("vanguarda-user");
-    if (!name) {
-      name = "anon-" + Math.random().toString(36).slice(2, 6);
-      localStorage.setItem("vanguarda-user", name);
-    }
-    return name;
-  } catch {
-    return "anon-" + Math.random().toString(36).slice(2, 6);
-  }
-})();
+// Login da sessão; o servidor ignora o nome que o cliente mandar.
+const user = canvas.dataset.user;
 
 const board = new Board();
 const cursors = new Map(); // user -> { x, y, seen }

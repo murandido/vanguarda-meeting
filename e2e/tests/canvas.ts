@@ -31,8 +31,15 @@ export function ehPostit([r, g, b, a]: RGBA): boolean {
   );
 }
 
-/** Abre o quadro e espera o WebSocket ficar online. */
-export async function abrirQuadro(page: Page, quadro: string): Promise<void> {
+/** Entra pelo login de desenvolvimento (DEV_LOGIN=1 no webServer). */
+export async function entrar(page: Page, login: string): Promise<void> {
+  await page.goto(`/auth/dev/${login}`);
+  await expect(page).toHaveURL("/");
+}
+
+/** Entra como `login`, abre o quadro e espera o WebSocket ficar online. */
+export async function abrirQuadro(page: Page, quadro: string, login = "ana"): Promise<void> {
+  await entrar(page, login);
   await page.goto(`/b/${quadro}`);
   await expect(page.locator("#status")).toHaveAttribute("data-state", "online", { timeout: 15_000 });
 }

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Entrar · Vanguarda{% endblock %}
+{% block body %}
+<main class="home">
+  <h1>Vanguarda</h1>
+  {% if let Some(error) = error %}
+  <p class="error" role="alert">{{ error }}</p>
+  {% endif %}
+  <p><a class="button" href="/auth/github">Entrar com GitHub</a></p>
+  {% if !dev_users.is_empty() %}
+  <section class="dev">
+    <h2>Desenvolvimento</h2>
+    <p>DEV_LOGIN ativo: entrar sem GitHub como</p>
+    <ul>
+      {% for login in dev_users %}
+      <li><a href="/auth/dev/{{ login }}">{{ login }}</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</main>
+{% endblock %}

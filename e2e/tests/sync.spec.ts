@@ -9,7 +9,7 @@ async function doisUsuarios(browser: Browser, quadro: string) {
   const ctxB = await browser.newContext();
   const a = await ctxA.newPage();
   const b = await ctxB.newPage();
-  await Promise.all([abrirQuadro(a, quadro), abrirQuadro(b, quadro)]);
+  await Promise.all([abrirQuadro(a, quadro, "ana"), abrirQuadro(b, quadro, "bia")]);
   return {
     a,
     b,

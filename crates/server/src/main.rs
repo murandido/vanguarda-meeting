@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use server::{AppState, Assets, app, db};
+use server::{AppState, Assets, AuthConfig, app, db};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -26,8 +26,17 @@ async fn main() -> anyhow::Result<()> {
         assets.pkg_dir = dir.into();
     }
 
+    let auth = AuthConfig::from_env()?;
+    anyhow::ensure!(
+        !auth.dev_login || addr.ip().is_loopback(),
+        "DEV_LOGIN só é permitido com BIND em loopback (127.0.0.1)"
+    );
+    if auth.dev_login {
+        tracing::warn!("DEV_LOGIN ativo: /auth/dev/{{login}} entra sem GitHub");
+    }
+
     let pool = db::connect(&db_url).await?;
-    let router = app(AppState::new(pool), &assets);
+    let router = app(AppState::new(pool, auth), &assets);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("ouvindo em http://{addr}");

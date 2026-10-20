@@ -42,3 +42,64 @@ pub async fn save_snapshot(db: &SqlitePool, board_id: &str, snapshot: &[u8]) -> 
     .await?;
     Ok(())
 }
+
+/// Cria ou atualiza o usuário no login. `login` já vem em minúsculas.
+pub async fn upsert_user(
+    db: &SqlitePool,
+    login: &str,
+    github_id: Option<i64>,
+    name: Option<&str>,
+    avatar_url: Option<&str>,
+) -> sqlx::Result<()> {
+    sqlx::query!(
+        "INSERT INTO users (login, github_id, name, avatar_url) VALUES (?, ?, ?, ?)
+         ON CONFLICT (login) DO UPDATE
+         SET github_id = COALESCE(excluded.github_id, users.github_id),
+             name = COALESCE(excluded.name, users.name),
+             avatar_url = COALESCE(excluded.avatar_url, users.avatar_url),
+             last_login_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        login,
+        github_id,
+        name,
+        avatar_url
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+pub async fn create_session(
+    db: &SqlitePool,
+    id: &str,
+    login: &str,
+    expires_at: i64,
+) -> sqlx::Result<()> {
+    sqlx::query!(
+        "INSERT INTO sessions (id, login, expires_at) VALUES (?, ?, ?)",
+        id,
+        login,
+        expires_at
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Login dono da sessão, se ela existir e não tiver expirado.
+pub async fn session_login(db: &SqlitePool, id: &str, now: i64) -> sqlx::Result<Option<String>> {
+    let row = sqlx::query!(
+        "SELECT login FROM sessions WHERE id = ? AND expires_at > ?",
+        id,
+        now
+    )
+    .fetch_optional(db)
+    .await?;
+    Ok(row.map(|r| r.login))
+}
+
+pub async fn delete_session(db: &SqlitePool, id: &str) -> sqlx::Result<()> {
+    sqlx::query!("DELETE FROM sessions WHERE id = ?", id)
+        .execute(db)
+        .await?;
+    Ok(())
+}

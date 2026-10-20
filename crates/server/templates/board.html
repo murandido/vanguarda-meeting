@@ -6,7 +6,8 @@
   <span>Cartazes / <strong>{{ board }}</strong></span>
   <span id="status" data-state="connecting">conectando…</span>
   <span class="hint">duplo clique cria · arraste para mover</span>
+  {% include "_user.html" %}
 </header>
-<canvas id="board" data-board="{{ board }}"></canvas>
+<canvas id="board" data-board="{{ board }}" data-user="{{ user }}"></canvas>
 <script type="module" src="/static/board.js"></script>
 {% endblock %}
