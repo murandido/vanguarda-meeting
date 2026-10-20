@@ -1,0 +1,41 @@
+name: Bug report
+description: Something does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security issues: please do not open an issue. See [SECURITY.md](https://github.com/murandido/vanguarda-meeting/blob/main/SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open /b/test as two users
+        2. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Cartazes (whiteboard), Ritmo (weekly board), Login, Deploy / operations, Other]
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Browser and OS, or commit SHA if running locally.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      render: text
