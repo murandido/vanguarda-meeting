@@ -6,12 +6,24 @@
       {
         "name": "login",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkins",
+            "name": "login"
+          }
+        }
       },
       {
         "name": "confirmed_at!",
         "ordinal": 1,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkins",
+            "name": "updated_at"
+          }
+        }
       }
     ],
     "parameters": {

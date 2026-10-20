@@ -6,47 +6,101 @@
       {
         "name": "id",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_tasks",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "week_id",
         "ordinal": 1,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_tasks",
+            "name": "week_id"
+          }
+        }
       },
       {
         "name": "owner",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_tasks",
+            "name": "owner"
+          }
+        }
       },
       {
         "name": "project_id",
         "ordinal": 3,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_tasks",
+            "name": "project_id"
+          }
+        }
       },
       {
         "name": "project_name",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_projects",
+            "name": "name"
+          }
+        }
       },
       {
         "name": "project_color",
         "ordinal": 5,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_projects",
+            "name": "color"
+          }
+        }
       },
       {
         "name": "title",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_tasks",
+            "name": "title"
+          }
+        }
       },
       {
         "name": "size",
         "ordinal": 7,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_tasks",
+            "name": "size"
+          }
+        }
       },
       {
         "name": "status",
         "ordinal": 8,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_tasks",
+            "name": "status"
+          }
+        }
       }
     ],
     "parameters": {

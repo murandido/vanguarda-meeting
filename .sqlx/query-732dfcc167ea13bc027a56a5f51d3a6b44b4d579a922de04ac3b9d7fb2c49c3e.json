@@ -6,27 +6,57 @@
       {
         "name": "task_id",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkin_items",
+            "name": "task_id"
+          }
+        }
       },
       {
         "name": "title",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_tasks",
+            "name": "title"
+          }
+        }
       },
       {
         "name": "project_color",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_projects",
+            "name": "color"
+          }
+        }
       },
       {
         "name": "status",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkin_items",
+            "name": "status"
+          }
+        }
       },
       {
         "name": "note",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkin_items",
+            "name": "note"
+          }
+        }
       }
     ],
     "parameters": {
