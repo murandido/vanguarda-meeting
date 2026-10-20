@@ -171,7 +171,7 @@ jobs:
           cp coverage-pct.txt .coverage-baseline/coverage-main.txt
       - name: salvar baseline
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .coverage-baseline
           key: coverage-main-${{ github.run_id }}
@@ -179,7 +179,7 @@ jobs:
       # --- PR: compara com a baseline da main ---
       - name: restaurar baseline da main
         if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .coverage-baseline
           # Chave inexistente de propósito: força o uso do restore-keys (mais recente).
