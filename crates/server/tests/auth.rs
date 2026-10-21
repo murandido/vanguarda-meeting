@@ -394,3 +394,48 @@ async fn periodic_cleanup_runs_at_boot_and_repeats() {
     wait("s2").await;
     task.abort();
 }
+
+fn post_logout(session: &str, origin: Option<&str>) -> Request<Body> {
+    let mut req = Request::post("/logout").header(header::COOKIE, session);
+    if let Some(o) = origin {
+        req = req.header(header::ORIGIN, o);
+    }
+    req.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn cross_origin_posts_are_refused() {
+    let (app, _) = oauth_app().await;
+    let session = oauth_login(&app, "ana").await.unwrap();
+
+    // A sibling subdomain (same site), an opaque origin and the wrong
+    // scheme: 403, and the session is untouched.
+    for evil in [
+        "https://sibling.example.com",
+        "null",
+        "http://vanguarda.exemplo",
+    ] {
+        let res = send(&app, post_logout(&session, Some(evil))).await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN, "{evil}");
+    }
+    assert_eq!(
+        get(&app, "/", Some(&session)).await.status(),
+        StatusCode::OK
+    );
+
+    // Plain GETs from another origin go through.
+    let req = Request::get("/login")
+        .header(header::ORIGIN, "https://sibling.example.com")
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(send(&app, req).await.status(), StatusCode::OK);
+
+    // The app's own origin (the logout form) works.
+    let res = send(
+        &app,
+        post_logout(&session, Some("https://vanguarda.exemplo")),
+    )
+    .await;
+    assert_eq!(location(&res), "/login");
+    assert_eq!(location(&get(&app, "/", Some(&session)).await), "/login");
+}

@@ -231,6 +231,34 @@ pub async fn prune_sessions(state: &AppState) -> sqlx::Result<u64> {
     db::prune_sessions(&state.db, &state.auth.allowed, now()).await
 }
 
+/// Does the request's `Origin` match the app's public URL exactly? A missing
+/// `Origin` does not match.
+pub(crate) fn same_origin(headers: &HeaderMap, public_url: &str) -> bool {
+    headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|origin| origin.eq_ignore_ascii_case(public_url))
+}
+
+/// Middleware: refuses state-changing requests (unsafe methods) whose
+/// `Origin` is not `PUBLIC_URL`.
+///
+/// `SameSite=Lax` is not enough: sibling subdomains are on the same site, so
+/// a form posted from one of them would carry the session cookie. Requests
+/// without `Origin` (non-browser clients) go through; the board WebSocket
+/// has its own, stricter check in `rooms.rs`.
+pub async fn check_origin(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    let headers = req.headers();
+    if !req.method().is_safe()
+        && headers.contains_key(header::ORIGIN)
+        && !same_origin(headers, &state.auth.public_url)
+    {
+        tracing::warn!(origin = ?headers.get(header::ORIGIN), path = req.uri().path(), "origem recusada");
+        return (StatusCode::FORBIDDEN, "origem não permitida").into_response();
+    }
+    next.run(req).await
+}
+
 #[derive(Template)]
 #[template(path = "login.html")]
 struct LoginPage<'a> {

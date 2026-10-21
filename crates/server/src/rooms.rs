@@ -47,7 +47,11 @@ use tokio::{
     time::Instant,
 };
 
-use crate::{AppState, auth::CurrentUser, boards, db};
+use crate::{
+    AppState,
+    auth::{CurrentUser, same_origin},
+    boards, db,
+};
 
 const ROOM_BUFFER: usize = 256;
 
@@ -295,14 +299,6 @@ impl Rooms {
             }
         }
     }
-}
-
-/// `Origin` da requisição bate exatamente com a URL pública do app?
-fn same_origin(headers: &HeaderMap, public_url: &str) -> bool {
-    headers
-        .get(header::ORIGIN)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|origin| origin.eq_ignore_ascii_case(public_url))
 }
 
 pub async fn ws_handler(

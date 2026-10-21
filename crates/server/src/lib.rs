@@ -150,6 +150,10 @@ pub fn app(state: AppState, assets: &Assets) -> Router {
             state.clone(),
             auth::require_user,
         ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::check_origin,
+        ))
         .with_state(state)
 }
 
