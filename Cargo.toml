@@ -4,7 +4,7 @@ members = ["crates/shared", "crates/canvas", "crates/server"]
 
 [workspace.package]
 edition = "2024"
-license = "UNLICENSED"
+license = "MIT"
 publish = false
 
 [workspace.dependencies]
