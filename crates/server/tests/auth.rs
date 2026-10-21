@@ -45,6 +45,9 @@ async fn fake_github() -> String {
     url
 }
 
+/// Session cookie with an https `PUBLIC_URL` (`__Host-` prefix).
+const SESSION: &str = "__Host-vanguarda_session=";
+
 async fn oauth_app() -> (Router, sqlx::SqlitePool) {
     oauth_app_with("ana,bia").await
 }
@@ -77,7 +80,7 @@ async fn start(app: &Router) -> (String, String) {
         "https://vanguarda.exemplo/auth/github/callback"
     );
     let cookie = set_cookies(&res).remove(0);
-    assert!(cookie.starts_with("vanguarda_oauth_state="));
+    assert!(cookie.starts_with("__Host-vanguarda_oauth_state="));
     // PUBLIC_URL em https: cookies com Secure.
     assert!(
         res.headers()[header::SET_COOKIE]
@@ -99,7 +102,7 @@ async fn callback(app: &Router, cookie: &str, code: &str, state: &str) -> axum::
 fn session_of(res: &axum::response::Response) -> Option<String> {
     set_cookies(res)
         .into_iter()
-        .find(|c| c.starts_with("vanguarda_session=") && c.len() > "vanguarda_session=".len())
+        .find(|c| c.starts_with(SESSION) && c.len() > SESSION.len())
 }
 
 #[tokio::test]
@@ -112,7 +115,7 @@ async fn protected_routes_need_login() {
     let res = get(&app, "/ws/qualquer", None).await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
-    let res = get(&app, "/", Some("vanguarda_session=inventada")).await;
+    let res = get(&app, "/", Some("__Host-vanguarda_session=inventada")).await;
     assert_eq!(location(&res), "/login");
 }
 
@@ -137,6 +140,19 @@ async fn invited_user_logs_in_and_out() {
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     assert_eq!(location(&res), "/");
     let session = session_of(&res).expect("sessão criada");
+    let raw = res
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .map(|v| v.to_str().unwrap())
+        .find(|v| v.starts_with(SESSION))
+        .unwrap();
+    // `__Host-` prefix requirements: Secure, Path=/ and no Domain.
+    assert!(raw.contains("; Secure") && raw.contains("Path=/") && !raw.contains("Domain"));
+
+    // The old unprefixed name no longer works over HTTPS.
+    let old_name = session.replace("__Host-", "");
+    assert_eq!(location(&get(&app, "/", Some(&old_name)).await), "/login");
 
     let res = get(&app, "/", Some(&session)).await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -148,7 +164,7 @@ async fn invited_user_logs_in_and_out() {
         .unwrap();
     let res = send(&app, req).await;
     assert_eq!(location(&res), "/login");
-    assert!(set_cookies(&res).contains(&"vanguarda_session=".to_owned()));
+    assert!(set_cookies(&res).contains(&SESSION.to_owned()));
 
     let res = get(&app, "/", Some(&session)).await;
     assert_eq!(location(&res), "/login", "sessão apagada no logout");
@@ -214,7 +230,7 @@ async fn expired_session_is_rejected() {
         .await
         .unwrap();
     db::create_session(&pool, "velha", "ana", 1).await.unwrap();
-    let res = get(&app, "/", Some("vanguarda_session=velha")).await;
+    let res = get(&app, "/", Some("__Host-vanguarda_session=velha")).await;
     assert_eq!(location(&res), "/login");
 }
 
