@@ -19,6 +19,22 @@
   });
   document.body.addEventListener("htmx:afterRequest", (e) => {
     if (aviso && e.detail.successful) aviso.hidden = true;
+    // New task added: clear the form for the next one.
+    const form = e.detail.elt;
+    if (e.detail.successful && form.id === "nova-tarefa") {
+      form.reset();
+      form.titulo.focus();
+    }
+  });
+
+  // Project colors arrive as data-cor (the CSP forbids inline style
+  // attributes); setting the property from script is allowed. htmx.onLoad
+  // runs for the initial page and for every swapped-in fragment.
+  htmx.onLoad((root) => {
+    const els = root.querySelectorAll ? [root, ...root.querySelectorAll("[data-cor]")] : [];
+    for (const el of els) {
+      if (el.dataset && el.dataset.cor) el.style.setProperty("--cor", el.dataset.cor);
+    }
   });
 
   if (!document.getElementById("quadro")) return;

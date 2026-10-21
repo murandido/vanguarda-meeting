@@ -13,8 +13,7 @@
     {% if my_projects.is_empty() %}
     <p>Crie um projeto (em “Projetos e configurações”) para começar a adicionar tarefas.</p>
     {% else %}
-    <form id="nova-tarefa" class="linha" hx-post="/ritmo/tarefas" hx-swap="none"
-          hx-on::after-request="if (event.detail.successful) { this.reset(); this.titulo.focus(); }">
+    <form id="nova-tarefa" class="linha" hx-post="/ritmo/tarefas" hx-swap="none">
       <input type="hidden" name="semana" value="{{ q.semana }}">
       <input name="titulo" required maxlength="120" placeholder="Nova tarefa da semana" aria-label="Título da tarefa">
       <select name="projeto" aria-label="Projeto">

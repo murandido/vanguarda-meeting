@@ -31,6 +31,8 @@ export default defineConfig({
     env: {
       DATABASE_URL: "sqlite::memory:",
       BIND: "127.0.0.1:3000",
+      // Must match baseURL: POSTs and WebSockets check the Origin header.
+      PUBLIC_URL: "http://127.0.0.1:3000",
       // Login de desenvolvimento: os testes entram por /auth/dev/{login}.
       DEV_LOGIN: "1",
       ALLOWED_GITHUB_USERS: "ana,bia",

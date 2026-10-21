@@ -13,7 +13,7 @@
   {% else %}
   <form id="form-checkin" class="checkin" hx-post="/ritmo/checkin" hx-swap="none">
     {% for it in items %}
-    <fieldset class="item" style="--cor: {{ it.color }}">
+    <fieldset class="item" data-cor="{{ it.color }}">
       <legend>{{ it.title }} <small>{{ it.project }}</small></legend>
       <div class="opcoes">
         {% for o in it.options %}

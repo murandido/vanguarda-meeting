@@ -17,11 +17,13 @@ use std::{
 };
 
 use axum::{
-    Router, middleware,
+    Router,
+    http::{HeaderName, HeaderValue},
+    middleware,
     routing::{get, post},
 };
 use sqlx::SqlitePool;
-use tower_http::services::ServeDir;
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
 pub use auth::AuthConfig;
 pub use rooms::{MAX_MESSAGE_BYTES, RoomTiming, Rooms};
@@ -143,7 +145,39 @@ impl Default for Assets {
     }
 }
 
+/// The app's CSP. No inline scripts or styles: all JS lives in `/static`
+/// and htmx runs without `eval` or an injected `<style>` (see `htmx-config`
+/// in `base.html`). `'wasm-unsafe-eval'` only allows compiling the Cartazes
+/// WASM module. `form-action` includes GitHub for the OAuth redirect.
+pub const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; \
+    style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; \
+    object-src 'none'; base-uri 'none'; form-action 'self' https://github.com";
+
+/// Security headers on every response (the same values as the Caddy site
+/// file, so they also apply locally and are covered by tests).
+pub const SECURITY_HEADERS: [(&str, &str); 5] = [
+    ("content-security-policy", CONTENT_SECURITY_POLICY),
+    ("referrer-policy", "strict-origin-when-cross-origin"),
+    (
+        "permissions-policy",
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    ),
+    ("x-content-type-options", "nosniff"),
+    ("x-frame-options", "DENY"),
+];
+
 pub fn app(state: AppState, assets: &Assets) -> Router {
+    let mut router = routes(state, assets);
+    for (name, value) in SECURITY_HEADERS {
+        router = router.layer(SetResponseHeaderLayer::if_not_present(
+            HeaderName::from_static(name),
+            HeaderValue::from_static(value),
+        ));
+    }
+    router
+}
+
+fn routes(state: AppState, assets: &Assets) -> Router {
     Router::new()
         .route("/", get(pages::index))
         .route("/b/{board}", get(pages::board))

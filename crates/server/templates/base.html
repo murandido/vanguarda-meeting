@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Vanguarda{% endblock %}</title>
+  <!-- No injected styles and no eval: the CSP forbids inline code. -->
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false}'>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js" defer></script>
 </head>

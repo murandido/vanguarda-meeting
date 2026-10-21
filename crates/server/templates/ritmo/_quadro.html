@@ -22,7 +22,7 @@
   <nav class="filtro" aria-label="Filtrar por projeto">
     <a href="{{ q.all_url }}"{% if !q.filtered %} aria-current="true"{% endif %}>Todos</a>
     {% for c in q.chips %}
-    <a href="{{ c.url }}" style="--cor: {{ c.color }}" title="projeto de {{ c.owner }}"{% if c.active %} aria-current="true"{% endif %}>{{ c.name }}</a>
+    <a href="{{ c.url }}" data-cor="{{ c.color }}" title="projeto de {{ c.owner }}"{% if c.active %} aria-current="true"{% endif %}>{{ c.name }}</a>
     {% endfor %}
   </nav>
   {% endif %}
@@ -45,7 +45,7 @@
         <h4>{{ col.label }} <small>{{ col.tasks.len() }}</small></h4>
         <ul>
           {% for t in col.tasks %}
-          <li class="card" style="--cor: {{ t.project_color }}" data-task="{{ t.id }}">
+          <li class="card" data-cor="{{ t.project_color }}" data-task="{{ t.id }}">
             <span class="titulo">{{ t.title }}</span>
             <span class="meta">
               <span class="projeto">{{ t.project_name }}</span>
@@ -86,7 +86,7 @@
       {% endif %}
       <ul>
         {% for it in f.items %}
-        <li style="--cor: {{ it.color }}">
+        <li data-cor="{{ it.color }}">
           <span class="status" data-status="{{ it.status }}">{{ it.label }}</span>
           <span class="titulo">{{ it.title }}</span>
           {% if !it.note.is_empty() %}<span class="nota">— {{ it.note }}</span>{% endif %}

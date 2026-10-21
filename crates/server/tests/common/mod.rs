@@ -104,3 +104,24 @@ pub async fn post_htmx(router: &Router, path: &str, cookie: &str, form: &str) ->
         .unwrap();
     send(router, req).await
 }
+
+/// The CSP allows no inline code: a rendered page may not have a `<script>`
+/// without `src`, a `<style>` element, a `style=` attribute, inline event
+/// handlers or htmx `hx-on` attributes (those need `eval`).
+pub fn assert_csp_safe(html: &str, path: &str) {
+    for tag in html.split("<script").skip(1) {
+        let open = tag.split('>').next().unwrap();
+        assert!(open.contains("src="), "inline script on {path}: {open}");
+    }
+    for forbidden in [
+        "<style",
+        " style=",
+        "onclick=",
+        "onsubmit=",
+        "onload=",
+        "onerror=",
+        "hx-on",
+    ] {
+        assert!(!html.contains(forbidden), "{forbidden} on {path}");
+    }
+}

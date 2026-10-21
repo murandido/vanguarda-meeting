@@ -190,7 +190,7 @@ async fn projects_are_validated_and_unique_per_owner() {
 
     // Cor guardada normalizada; projetos aparecem no filtro.
     let body = d.page(&d.ana, "/ritmo").await;
-    assert!(body.contains("--cor: #ff8800"));
+    assert!(body.contains(r##"data-cor="#ff8800""##));
     assert!(body.contains(r#"title="projeto de bia""#));
     assert!(body.contains(r#"<option value="1">Livro</option>"#));
     assert!(!body.contains("Crie um projeto"));
@@ -425,6 +425,8 @@ async fn checkin_once_per_day_and_editable() {
     .await;
 
     let body = d.page(&d.ana, "/ritmo/checkin").await;
+    common::assert_csp_safe(&body, "/ritmo/checkin");
+    assert!(body.contains(r##"<fieldset class="item" data-cor="#"##));
     assert!(body.contains("21/10 (quarta-feira)"));
     assert!(body.contains(&format!(r#"name="status-{a}" value="untouched" checked"#)));
     assert!(body.contains(&format!(r#"name="nota-{b}""#)));
@@ -532,6 +534,7 @@ async fn partner_sees_my_checkin_in_the_feed() {
     .await;
 
     let body = d.page(&d.bia, "/ritmo").await;
+    common::assert_csp_safe(&body, "/ritmo");
     let feed = &body[body.find(r#"<section class="feed""#).unwrap()..];
     assert!(feed.contains(r#"<article class="checkin-feito" data-login="ana">"#));
     assert!(feed.contains("<h4>ana <small>às 12:00</small></h4>"));

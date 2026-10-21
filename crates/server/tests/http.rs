@@ -138,3 +138,50 @@ async fn http_client_times_out() {
     assert!(err.is_timeout(), "{err}");
     assert!(started.elapsed() < Duration::from_secs(5));
 }
+
+#[tokio::test]
+async fn security_headers_on_every_response() {
+    let (app, cookie) = logged_in().await;
+    for (path, cookie) in [
+        ("/", Some(cookie.as_str())),
+        ("/login", None),
+        ("/health", None),
+        ("/static/app.css", None),
+        ("/b/Nome%20Ruim", Some(cookie.as_str())),
+        ("/", None),
+    ] {
+        let res = get(&app, path, cookie).await;
+        for (name, value) in server::SECURITY_HEADERS {
+            assert_eq!(res.headers()[name], value, "{name} on {path}");
+        }
+    }
+    let csp = server::CONTENT_SECURITY_POLICY;
+    assert!(!csp.contains("unsafe-inline") && !csp.contains("'unsafe-eval'"));
+    assert!(csp.contains("frame-ancestors 'none'"));
+}
+
+/// Every page renders without inline code (the Ritmo pages with data are
+/// covered in `tests/ritmo.rs`).
+#[tokio::test]
+async fn pages_have_no_inline_scripts_or_styles() {
+    let pool = memory_db().await;
+    common::create_board(&pool, "quadro").await;
+    let app = router(pool, dev_auth());
+    let cookie = dev_session(&app, "ana").await;
+    for path in [
+        "/",
+        "/cartazes",
+        "/b/quadro",
+        "/b/nao-existe",
+        "/ritmo",
+        "/ritmo/checkin",
+        "/login",
+    ] {
+        let html = body_text(get(&app, path, Some(&cookie)).await).await;
+        common::assert_csp_safe(&html, path);
+    }
+    let home = body_text(get(&app, "/", Some(&cookie)).await).await;
+    assert!(home.contains(
+        r#"<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false}'>"#
+    ));
+}
