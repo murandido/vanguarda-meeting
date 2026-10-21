@@ -56,10 +56,10 @@ reunião (padrão: terça, horário de Brasília), configurável na própria pá
 
 | Variável | Padrão | Para quê |
 | --- | --- | --- |
-| `ALLOWED_GITHUB_USERS` | — (obrigatória) | Logins do GitHub convidados, separados por vírgula |
+| `ALLOWED_GITHUB_USERS` | — (obrigatória) | Logins do GitHub convidados, separados por vírgula; `login:id` exige também o id numérico da conta. Sem id, o primeiro login vincula a conta (um id diferente depois é recusado) |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | — | OAuth App do GitHub; obrigatórias sem `DEV_LOGIN` |
-| `PUBLIC_URL` | `http://127.0.0.1:3000` | Base do callback (`{PUBLIC_URL}/auth/github/callback`) e única `Origin` aceita no WebSocket |
-| `COOKIE_SECURE` | `true` se `PUBLIC_URL` for https | Cookie de sessão só por HTTPS |
+| `PUBLIC_URL` | `http://127.0.0.1:3000` | Base do callback (`{PUBLIC_URL}/auth/github/callback`) e única `Origin` aceita em POST e no WebSocket (outra leva 403) |
+| `COOKIE_SECURE` | `true` se `PUBLIC_URL` for https | Cookies só por HTTPS, com prefixo `__Host-` |
 | `DEV_LOGIN` | desligado | Libera `/auth/dev/{login}`; só aceito com `BIND` em loopback |
 | `DATABASE_URL` | `sqlite://vanguarda.db` | Banco SQLite |
 | `BIND` | `127.0.0.1:3000` | Endereço do servidor |
@@ -86,7 +86,7 @@ Produção: <https://vanguarda-meeting.emioitenta.com.br>, na VPS `m80-loadtest`
   `/opt/caddy-sites/vanguarda-meeting.caddy`.
 - Segredos do workflow ficam no environment `production` do GitHub:
   `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`.
-- Convidar alguém: editar `ALLOWED_GITHUB_USERS` em `/opt/vanguarda/.env` e rodar
+- Convidar ou remover alguém (remover corta o acesso no reinício): editar `ALLOWED_GITHUB_USERS` em `/opt/vanguarda/.env` e rodar
   `docker compose -f /opt/vanguarda/compose.yml up -d` com `IMAGE_TAG` atual.
 
 ### Backup e restauração
