@@ -5,7 +5,7 @@
 // ~40px no topo, então as sondas ficam abaixo disso. Cada post-it criado por
 // duplo clique mede 120x80 e fica centrado no ponto clicado.
 import { expect, test, type Page } from "@playwright/test";
-import { abrirQuadro, doisUsuarios, esperaPostit, pixelsColoridos, quadroUnico, zoom } from "./canvas";
+import { abrirNovoQuadro, doisUsuarios, esperaPostit, pixelsColoridos, quadroUnico, zoom } from "./canvas";
 
 /** Ctrl + roda `vezes` vezes no ponto (x, y): negativo aproxima. */
 async function ctrlRoda(page: Page, x: number, y: number, deltaY: number, vezes: number) {
@@ -22,7 +22,7 @@ async function rola(page: Page, x: number, y: number, dx: number, dy: number) {
 }
 
 test("pan muda o que está sob um ponto fixo da tela", async ({ page }) => {
-  await abrirQuadro(page, quadroUnico("pan"));
+  await abrirNovoQuadro(page, quadroUnico("pan"));
 
   // P1 ocupa x 340..460, y 260..340; P2 ocupa x 740..860, y 260..340.
   await page.mouse.dblclick(400, 300);
@@ -67,7 +67,7 @@ test("pan muda o que está sob um ponto fixo da tela", async ({ page }) => {
 });
 
 test("zoom mantém o post-it sob o ponteiro e respeita os atalhos", async ({ page }) => {
-  await abrirQuadro(page, quadroUnico("zoom"));
+  await abrirNovoQuadro(page, quadroUnico("zoom"));
   await expect(zoom(page)).toHaveText("100%");
 
   // Post-it em x 340..460, y 260..340; ponteiro fora do centro dele.
@@ -152,7 +152,7 @@ test("dois usuários com câmeras diferentes veem o post-it no mesmo ponto do mu
 
 test("1.000 post-its: enquadrar e navegar mantém a fluidez", async ({ page }) => {
   const quadro = quadroUnico("mil");
-  await abrirQuadro(page, quadro);
+  await abrirNovoQuadro(page, quadro);
 
   // Gera 1.000 post-its (grade 50x20, passo 160x120) com o próprio módulo
   // WASM e envia por um segundo WebSocket da mesma sessão, como faria outro

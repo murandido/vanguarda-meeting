@@ -1,0 +1,12 @@
+# Agenda o vanguarda-backup.service todo dia às 04:30 de Brasília.
+# Persistent=true: se a VPS estava desligada no horário, roda ao ligar.
+# Próxima execução: systemctl list-timers vanguarda-backup.timer
+[Unit]
+Description=Backup diário do SQLite do Vanguarda
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 America/Sao_Paulo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

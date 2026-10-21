@@ -13,7 +13,9 @@ pub mod camera;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
+mod limits;
 pub use camera::{Bounds, Camera};
+pub use limits::{LimitError, Limits};
 
 const SHAPES: &str = "shapes";
 
