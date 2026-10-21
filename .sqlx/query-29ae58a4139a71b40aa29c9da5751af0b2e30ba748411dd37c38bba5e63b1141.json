@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE users SET github_id = ? WHERE login = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "29ae58a4139a71b40aa29c9da5751af0b2e30ba748411dd37c38bba5e63b1141"
+}

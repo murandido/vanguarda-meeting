@@ -32,11 +32,11 @@ Portuguese; code and documentation are in English.
 | Ritmo | Weekly commitment ("prometido") frozen at the meeting, with done/total score | ✅ Shipped |
 | Ritmo | Mobile daily check-in and a shared "today" feed | ✅ Shipped |
 | Ritmo | Live updates through Server-Sent Events | ✅ Shipped |
-| Ritmo | Check-in streaks | 🚧 In progress |
+| Ritmo | Streaks with freezes and planned pauses, week closing (carry over or drop) and celebrations | ✅ Shipped |
 | Platform | Invite-only login with GitHub OAuth | ✅ Shipped |
 | Platform | Continuous deployment to an ARM VPS with health check and automatic rollback | ✅ Shipped |
 | Platform | Daily SQLite backups with a tested restore procedure | ✅ Shipped |
-| Platform | Security hardening: CSP and security headers, `__Host-` cookies, Origin checks on writes, account binding, session revocation, read-only container | 🚧 In progress ([#17](https://github.com/murandido/vanguarda-meeting/pull/17)) |
+| Platform | Security hardening: CSP and security headers, `__Host-` cookies, Origin checks on writes, account binding, session revocation, read-only container | ✅ Shipped |
 
 ## Architecture
 
@@ -153,10 +153,10 @@ The server is configured through environment variables:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ALLOWED_GITHUB_USERS` | required | Comma-separated GitHub logins allowed to sign in |
+| `ALLOWED_GITHUB_USERS` | required | Comma-separated GitHub logins allowed to sign in; `login:id` also pins the numeric account id (without it, the first sign-in binds the account) |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | none | GitHub OAuth App credentials; required unless `DEV_LOGIN` is on |
-| `PUBLIC_URL` | `http://127.0.0.1:3000` | Public base URL: the OAuth callback is `{PUBLIC_URL}/auth/github/callback`, and it is the only `Origin` the WebSocket accepts |
-| `COOKIE_SECURE` | `true` when `PUBLIC_URL` is https | Send the session cookie over HTTPS only |
+| `PUBLIC_URL` | `http://127.0.0.1:3000` | Public base URL: the OAuth callback is `{PUBLIC_URL}/auth/github/callback`, and the only `Origin` accepted on writes and on the WebSocket |
+| `COOKIE_SECURE` | `true` when `PUBLIC_URL` is https | Send cookies over HTTPS only, with the `__Host-` prefix |
 | `DEV_LOGIN` | off | Enables `/auth/dev/{login}` for local development and E2E; refused unless `BIND` is a loopback address |
 | `DATABASE_URL` | `sqlite://vanguarda.db` | SQLite database (created and migrated on start) |
 | `BIND` | `127.0.0.1:3000` | Listen address |

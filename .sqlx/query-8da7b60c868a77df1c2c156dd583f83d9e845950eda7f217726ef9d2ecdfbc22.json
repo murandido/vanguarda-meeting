@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE users\n         SET name = COALESCE(?, name),\n             avatar_url = COALESCE(?, avatar_url),\n             last_login_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')\n         WHERE login = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "8da7b60c868a77df1c2c156dd583f83d9e845950eda7f217726ef9d2ecdfbc22"
+}

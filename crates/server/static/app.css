@@ -66,6 +66,10 @@ body { margin: 0; }
 .checkin .opcoes label:has(input:checked) { background: color-mix(in srgb, #4c6ef5 20%, Canvas); }
 .checkin input[name^="nota-"] { width: 100%; box-sizing: border-box; }
 
+/* htmx indicators: htmx no longer injects these styles (the CSP forbids inline). */
+.htmx-indicator { opacity: 0; }
+.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; transition: opacity 200ms ease-in; }
+
 /* Streaks (KB-06) */
 .streaks { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
 .streak { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem; margin: 0; padding: .35rem .7rem;

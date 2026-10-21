@@ -6,9 +6,12 @@
 //! que entra sem passar pelo GitHub (só para logins convidados).
 
 use std::{
+    collections::HashMap,
     fmt::Write as _,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+use anyhow::Context as _;
 
 use askama::Template;
 use axum::{
@@ -23,6 +26,10 @@ use crate::{AppState, db, pages::render};
 
 const SESSION_COOKIE: &str = "vanguarda_session";
 const STATE_COOKIE: &str = "vanguarda_oauth_state";
+/// Cookie name prefix over HTTPS: browsers only accept `__Host-` cookies
+/// with `Secure`, `Path=/` and no `Domain`, so a sibling subdomain (same
+/// site) cannot plant or overwrite them.
+const HOST_PREFIX: &str = "__Host-";
 const SESSION_SECS: i64 = 30 * 24 * 60 * 60;
 const STATE_SECS: i64 = 10 * 60;
 
@@ -35,6 +42,8 @@ pub struct AuthConfig {
     pub client_secret: String,
     /// Logins do GitHub convidados, em minúsculas.
     pub allowed: Vec<String>,
+    /// GitHub account ids required for some logins (`login:id` entries).
+    pub github_ids: HashMap<String, i64>,
     /// URL pública do app, sem barra final (base do `redirect_uri`).
     pub public_url: String,
     pub cookie_secure: bool,
@@ -51,12 +60,8 @@ impl AuthConfig {
     /// Lê a configuração de uma fonte de variáveis (testável sem mexer no
     /// ambiente do processo).
     pub fn from_vars(var: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
-        let allowed: Vec<String> = var("ALLOWED_GITHUB_USERS")
-            .unwrap_or_default()
-            .split(',')
-            .map(|s| s.trim().to_lowercase())
-            .filter(|s| !s.is_empty())
-            .collect();
+        let (allowed, github_ids) =
+            parse_allowed(&var("ALLOWED_GITHUB_USERS").unwrap_or_default())?;
         anyhow::ensure!(
             !allowed.is_empty(),
             "ALLOWED_GITHUB_USERS vazio: ninguém conseguiria entrar"
@@ -83,6 +88,7 @@ impl AuthConfig {
             client_id,
             client_secret,
             allowed,
+            github_ids,
             public_url,
             cookie_secure,
             dev_login,
@@ -96,10 +102,65 @@ impl AuthConfig {
         self.allowed.iter().any(|a| a.eq_ignore_ascii_case(login))
     }
 
+    /// GitHub account id required for `login`, if its entry is `login:id`.
+    fn pinned_id(&self, login: &str) -> Option<i64> {
+        self.github_ids.get(&login.to_lowercase()).copied()
+    }
+
+    /// Session cookie name: `__Host-` prefixed when `cookie_secure` (over
+    /// local HTTP the browser would reject the prefix without `Secure`).
+    #[must_use]
+    pub fn session_cookie(&self) -> String {
+        self.cookie_name(SESSION_COOKIE)
+    }
+
+    /// Name of the OAuth `state` cookie (same rule as the session cookie).
+    #[must_use]
+    pub fn state_cookie(&self) -> String {
+        self.cookie_name(STATE_COOKIE)
+    }
+
+    fn cookie_name(&self, base: &str) -> String {
+        if self.cookie_secure {
+            format!("{HOST_PREFIX}{base}")
+        } else {
+            base.to_owned()
+        }
+    }
+
     fn cookie(&self, name: &str, value: &str, max_age: i64) -> String {
         let secure = if self.cookie_secure { "; Secure" } else { "" };
         format!("{name}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{secure}")
     }
+}
+
+/// Parses `ALLOWED_GITHUB_USERS`: comma-separated logins, each optionally
+/// followed by the numeric GitHub account id (`login:id`), which is then
+/// required at login.
+fn parse_allowed(raw: &str) -> anyhow::Result<(Vec<String>, HashMap<String, i64>)> {
+    let mut allowed = Vec::new();
+    let mut ids = HashMap::new();
+    for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        let (login, id) = match entry.split_once(':') {
+            Some((login, id)) => {
+                let id = id.trim().parse::<i64>().with_context(|| {
+                    format!("id do GitHub inválido em ALLOWED_GITHUB_USERS: {entry}")
+                })?;
+                (login.trim(), Some(id))
+            }
+            None => (entry, None),
+        };
+        anyhow::ensure!(
+            !login.is_empty(),
+            "login vazio em ALLOWED_GITHUB_USERS: {entry}"
+        );
+        let login = login.to_lowercase();
+        if let Some(id) = id {
+            ids.insert(login.clone(), id);
+        }
+        allowed.push(login);
+    }
+    Ok((allowed, ids))
 }
 
 /// Usuário logado, colocado nas extensões da requisição pelo [`require_user`].
@@ -142,25 +203,60 @@ pub async fn require_user(State(state): State<AppState>, mut req: Request, next:
         return next.run(req).await;
     }
 
-    let login = match read_cookie(req.headers(), SESSION_COOKIE) {
+    let login = match read_cookie(req.headers(), &state.auth.session_cookie()) {
         Some(id) => db::session_login(&state.db, id, now()).await,
         None => Ok(None),
     };
     match login {
-        Ok(Some(login)) => {
+        // Invite revoked: the session stops working right away (and is
+        // deleted by the next cleanup).
+        Ok(Some(login)) if state.auth.is_allowed(&login) => {
             req.extensions_mut().insert(CurrentUser { login });
             next.run(req).await
         }
         // WebSocket e SSE não seguem redirecionamento para a página de login.
-        Ok(None) if path.starts_with("/ws/") || path == "/ritmo/events" => {
+        Ok(_) if path.starts_with("/ws/") || path == "/ritmo/events" => {
             StatusCode::UNAUTHORIZED.into_response()
         }
-        Ok(None) => Redirect::to("/login").into_response(),
+        Ok(_) => Redirect::to("/login").into_response(),
         Err(e) => {
             tracing::error!("falha ao ler sessão: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
+}
+
+/// Deletes sessions that expired or belong to logins no longer invited.
+pub async fn prune_sessions(state: &AppState) -> sqlx::Result<u64> {
+    db::prune_sessions(&state.db, &state.auth.allowed, now()).await
+}
+
+/// Does the request's `Origin` match the app's public URL exactly? A missing
+/// `Origin` does not match.
+pub(crate) fn same_origin(headers: &HeaderMap, public_url: &str) -> bool {
+    headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|origin| origin.eq_ignore_ascii_case(public_url))
+}
+
+/// Middleware: refuses state-changing requests (unsafe methods) whose
+/// `Origin` is not `PUBLIC_URL`.
+///
+/// `SameSite=Lax` is not enough: sibling subdomains are on the same site, so
+/// a form posted from one of them would carry the session cookie. Requests
+/// without `Origin` (non-browser clients) go through; the board WebSocket
+/// has its own, stricter check in `rooms.rs`.
+pub async fn check_origin(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    let headers = req.headers();
+    if !req.method().is_safe()
+        && headers.contains_key(header::ORIGIN)
+        && !same_origin(headers, &state.auth.public_url)
+    {
+        tracing::warn!(origin = ?headers.get(header::ORIGIN), path = req.uri().path(), "origem recusada");
+        return (StatusCode::FORBIDDEN, "origem não permitida").into_response();
+    }
+    next.run(req).await
 }
 
 #[derive(Template)]
@@ -211,7 +307,7 @@ pub async fn github_start(State(state): State<AppState>) -> Response {
     (
         AppendHeaders([(
             header::SET_COOKIE,
-            auth.cookie(STATE_COOKIE, &oauth_state, STATE_SECS),
+            auth.cookie(&auth.state_cookie(), &oauth_state, STATE_SECS),
         )]),
         Redirect::to(url.as_str()),
     )
@@ -272,10 +368,10 @@ pub async fn github_callback(
     headers: HeaderMap,
     Query(q): Query<CallbackQuery>,
 ) -> Response {
-    if read_cookie(&headers, STATE_COOKIE) != Some(q.state.as_str()) {
+    if read_cookie(&headers, &state.auth.state_cookie()) != Some(q.state.as_str()) {
         return (StatusCode::BAD_REQUEST, "state do OAuth inválido").into_response();
     }
-    let clear_state = state.auth.cookie(STATE_COOKIE, "", 0);
+    let clear_state = state.auth.cookie(&state.auth.state_cookie(), "", 0);
 
     let user = match fetch_github_user(&state, &q.code).await {
         Ok(user) => user,
@@ -297,17 +393,38 @@ pub async fn github_callback(
             .into_response();
     }
 
+    let refuse = |reason: &str| {
+        tracing::warn!(
+            login = user.login,
+            github_id = user.id,
+            "login recusado: {reason}"
+        );
+        (
+            AppendHeaders([(header::SET_COOKIE, clear_state.clone())]),
+            Redirect::to("/login?erro=nao-convidado"),
+        )
+            .into_response()
+    };
+    if state
+        .auth
+        .pinned_id(&user.login)
+        .is_some_and(|id| id != user.id)
+    {
+        return refuse("id do GitHub diferente do convidado");
+    }
+
     let login = user.login.to_lowercase();
-    let result = db::upsert_user(
+    let result = db::login_github_user(
         &state.db,
         &login,
-        Some(user.id),
+        user.id,
         user.name.as_deref(),
         user.avatar_url.as_deref(),
     )
     .await;
     match result {
-        Ok(()) => start_session(&state, &login, Some(clear_state)).await,
+        Ok(db::GithubLogin::Accepted) => start_session(&state, &login, Some(clear_state)).await,
+        Ok(db::GithubLogin::Conflict) => refuse("login já vinculado a outra conta do GitHub"),
         Err(e) => {
             tracing::error!("falha ao salvar usuário: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -337,7 +454,9 @@ async fn start_session(state: &AppState, login: &str, extra_cookie: Option<Strin
         tracing::error!("falha ao criar sessão: {e}");
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
-    let session = state.auth.cookie(SESSION_COOKIE, &id, SESSION_SECS);
+    let session = state
+        .auth
+        .cookie(&state.auth.session_cookie(), &id, SESSION_SECS);
     let mut res = Redirect::to("/").into_response();
     for cookie in std::iter::once(session).chain(extra_cookie) {
         res.headers_mut().append(
@@ -349,13 +468,16 @@ async fn start_session(state: &AppState, login: &str, extra_cookie: Option<Strin
 }
 
 pub async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if let Some(id) = read_cookie(&headers, SESSION_COOKIE)
+    if let Some(id) = read_cookie(&headers, &state.auth.session_cookie())
         && let Err(e) = db::delete_session(&state.db, id).await
     {
         tracing::error!("falha ao apagar sessão: {e}");
     }
     (
-        AppendHeaders([(header::SET_COOKIE, state.auth.cookie(SESSION_COOKIE, "", 0))]),
+        AppendHeaders([(
+            header::SET_COOKIE,
+            state.auth.cookie(&state.auth.session_cookie(), "", 0),
+        )]),
         Redirect::to("/login"),
     )
         .into_response()
@@ -400,6 +522,35 @@ mod tests {
         assert!(cfg.is_allowed("ANA"));
         assert!(!cfg.is_allowed("carla"));
         assert!(cfg.cookie("c", "v", 10).ends_with("; Secure"));
+        assert_eq!(cfg.session_cookie(), "__Host-vanguarda_session");
+        assert_eq!(cfg.state_cookie(), "__Host-vanguarda_oauth_state");
+
+        let local =
+            AuthConfig::from_vars(vars(&[("ALLOWED_GITHUB_USERS", "ana"), ("DEV_LOGIN", "1")]))
+                .unwrap();
+        assert!(!local.cookie_secure);
+        assert_eq!(local.session_cookie(), "vanguarda_session");
+        assert_eq!(local.state_cookie(), "vanguarda_oauth_state");
+        assert!(!local.cookie("c", "v", 10).contains("Secure"));
+    }
+
+    #[test]
+    fn config_accepts_pinned_github_ids() {
+        let cfg = AuthConfig::from_vars(vars(&[
+            ("ALLOWED_GITHUB_USERS", "Ana:12345, bia ,carla: 7"),
+            ("DEV_LOGIN", "1"),
+        ]))
+        .unwrap();
+        assert_eq!(cfg.allowed, ["ana", "bia", "carla"]);
+        assert_eq!(cfg.pinned_id("ANA"), Some(12345));
+        assert_eq!(cfg.pinned_id("bia"), None);
+        assert_eq!(cfg.pinned_id("carla"), Some(7));
+
+        for bad in ["ana:abc", ":12", "ana:"] {
+            let err =
+                AuthConfig::from_vars(vars(&[("ALLOWED_GITHUB_USERS", bad), ("DEV_LOGIN", "1")]));
+            assert!(err.is_err(), "{bad} deveria ser recusado");
+        }
     }
 
     #[test]

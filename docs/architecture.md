@@ -156,7 +156,7 @@ sequenceDiagram
   logins only, and the server refuses to start with it unless it listens on a
   loopback address. The end-to-end tests use it.
 
-Pending in #17:
+Hardening:
 
 - the first GitHub account id seen for a login is pinned, so a renamed or
   re-registered GitHub username cannot take over an invitation
@@ -185,10 +185,10 @@ shared board.
 | Container runs as an unprivileged user (uid 10001), memory-limited | On `main` |
 | WebSocket upgrade requires `Origin` equal to `PUBLIC_URL` (cross-site WebSocket hijacking) | On `main` |
 | WebSocket frame/message size limits; updates validated on a fork before they are applied | On `main` |
-| `Origin` check on every non-safe method | Pending #17 |
-| Content Security Policy without inline scripts or `eval` (only `'wasm-unsafe-eval'`), plus `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options`, `X-Content-Type-Options` | Pending #17 |
-| `__Host-` cookies, account-id binding, per-request allow-list check | Pending #17 |
-| Read-only root filesystem, all capabilities dropped, `no-new-privileges`, PID limit, base image pinned by digest | Pending #17 |
+| `Origin` check on every non-safe method | Shipped (#17) |
+| Content Security Policy without inline scripts or `eval` (only `'wasm-unsafe-eval'`), plus `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options`, `X-Content-Type-Options` | Shipped (#17) |
+| `__Host-` cookies, account-id binding, per-request allow-list check | Shipped (#17) |
+| Read-only root filesystem, all capabilities dropped, `no-new-privileges`, PID limit, base image pinned by digest | Shipped (#17) |
 | HSTS and `nosniff` at the reverse proxy | On `main` |
 | Board create/rename/archive posts require `HX-Request` | On `main` |
 
