@@ -1,25 +1,30 @@
 #!/usr/bin/env bash
 #
-# Sobe uma versão do Vanguarda na VPS, com rollback se ela não ficar saudável.
-# Roda em /opt/vanguarda, para onde o workflow de deploy copia este script,
-# o compose.yml, o vanguarda-meeting.caddy, backup.sh, restore.sh e systemd/
-# antes de chamá-lo.
+# Rolls out one Vanguarda version on the VPS, rolling back if it does not
+# become healthy. Runs from /opt/vanguarda; the deploy workflow copies this
+# script, compose.yml, site.caddy.tmpl, backup.sh, restore.sh and systemd/
+# there before calling it.
 #
-# Uso: deploy.sh <tag-da-imagem>
+# Usage: deploy.sh <image-tag>
 #
-# Preparação única da VPS (ver README, seção Deploy):
-#   - /opt/vanguarda/.env com os segredos (permissão 600)
-#   - /opt/vanguarda/data com dono 10001 (usuário do contêiner)
-#   - /opt/caddy-sites importado pelo Caddyfile do m80
+# One-time VPS setup (see docs/operations.md):
+#   - /opt/vanguarda/.env: app secrets (mode 600), plus PROXY_NETWORK, the
+#     Docker network shared with the Caddy reverse proxy (used by compose.yml)
+#   - /opt/vanguarda/data owned by uid 10001 (the container user)
+#   - /opt/vanguarda/deploy.env with the host-specific settings below
+#
+# deploy.env (sourced by this script; not secret):
+#   SITE_DOMAIN      public hostname served by Caddy (e.g. vanguarda.example.com)
+#   CADDY_CONTAINER  name of the running Caddy container to reload
+#   SITES_DIR        host directory imported by that Caddy's Caddyfile
 
 set -Eeuo pipefail
 
 TAG="${1:?uso: deploy.sh <tag-da-imagem>}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_FILE="$DIR/.deploy-state"
-SITES_DIR=/opt/caddy-sites
+SITE_TEMPLATE=site.caddy.tmpl
 SITE_FILE=vanguarda-meeting.caddy
-CADDY=caddy-prod
 UNIT_DIR=/etc/systemd/system
 BACKUP_UNITS=(vanguarda-backup.service vanguarda-backup.timer)
 HEALTH_TIMEOUT=60
@@ -30,6 +35,13 @@ die() { log "ERRO: $*" >&2; exit 1; }
 cd "$DIR"
 [ -f .env ] || die "$DIR/.env não existe"
 [ -d data ] || die "$DIR/data não existe"
+[ -f deploy.env ] || die "$DIR/deploy.env não existe (ver docs/operations.md)"
+# shellcheck source=/dev/null
+. ./deploy.env
+: "${SITE_DOMAIN:?defina SITE_DOMAIN no deploy.env}"
+: "${CADDY_CONTAINER:?defina CADDY_CONTAINER no deploy.env}"
+: "${SITES_DIR:?defina SITES_DIR no deploy.env}"
+[[ "$SITE_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "SITE_DOMAIN inválido: ${SITE_DOMAIN}"
 
 compose() { IMAGE_TAG="$1" docker compose -f compose.yml "${@:2}"; }
 
@@ -68,16 +80,17 @@ else
   die "deploy de ${TAG} falhou"
 fi
 
-# Site no Caddy do m80: só recarrega se o arquivo mudou.
+# Site on the shared Caddy: render the template, reload only if it changed.
+sed "s/\${SITE_DOMAIN}/${SITE_DOMAIN}/g" "$DIR/$SITE_TEMPLATE" > "$DIR/$SITE_FILE"
 if [ ! -d "$SITES_DIR" ]; then
   log "aviso: ${SITES_DIR} não existe; o site ainda não está publicado no Caddy"
 elif ! cmp -s "$DIR/$SITE_FILE" "$SITES_DIR/$SITE_FILE"; then
   cp "$DIR/$SITE_FILE" "$SITES_DIR/$SITE_FILE"
-  if docker exec "$CADDY" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
+  if docker exec "$CADDY_CONTAINER" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
     log "Caddy recarregado com ${SITE_FILE}"
   else
     rm -f "$SITES_DIR/$SITE_FILE"
-    docker exec "$CADDY" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
+    docker exec "$CADDY_CONTAINER" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
     die "o Caddy recusou ${SITE_FILE}; arquivo removido e configuração anterior restaurada"
   fi
 fi

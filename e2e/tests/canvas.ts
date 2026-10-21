@@ -109,6 +109,74 @@ export async function doisUsuarios(browser: Browser, quadro: string) {
   };
 }
 
+/**
+ * Creates a 120x80 post-it centered on (x, y) with a double click, then leaves
+ * the text editor that opens on creation (Esc), keeping the post-it selected.
+ */
+export async function criarPostit(page: Page, x: number, y: number): Promise<void> {
+  await page.mouse.dblclick(x, y);
+  const editor = page.locator("#postit-editor");
+  await expect(editor).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(editor).toBeHidden();
+}
+
+/** Post-it fills by color name (same palette as board.js / app.css). */
+export const CORES_POSTIT = {
+  yellow: [255, 224, 102],
+  orange: [255, 192, 120],
+  pink: [250, 162, 193],
+  purple: [208, 191, 255],
+  blue: [165, 216, 255],
+  green: [178, 242, 187],
+} as const;
+
+/** True if the pixel is (roughly) the opaque color `rgb`. */
+export function ehCor([r, g, b, a]: RGBA, rgb: readonly [number, number, number]): boolean {
+  const tol = 3;
+  return a > 250 && Math.abs(r - rgb[0]) <= tol && Math.abs(g - rgb[1]) <= tol && Math.abs(b - rgb[2]) <= tol;
+}
+
+/**
+ * Counts the pixels of a `w`x`h` box at (x, y) matching `pred`. Used to see
+ * text (dark pixels on a post-it) and stickers (opaque pixels on the empty
+ * board: the background is transparent and the grid dots are translucent),
+ * whatever emoji font the machine has.
+ */
+export async function contaPixels(
+  page: Page,
+  [x, y, w, h]: readonly [number, number, number, number],
+  pred: "escuro" | "opaco",
+): Promise<number> {
+  return page.evaluate(
+    ([cx, cy, cw, ch, p]) => {
+      const c = document.getElementById("board") as HTMLCanvasElement;
+      const d = c.getContext("2d")!.getImageData(cx, cy, cw, ch).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const opaque = d[i + 3] > 200;
+        if (p === "opaco" ? opaque : opaque && Math.max(d[i], d[i + 1], d[i + 2]) < 110) n++;
+      }
+      return n;
+    },
+    [x, y, w, h, pred] as const,
+  );
+}
+
+/** Alpha mask (1 = opaque) of a box of the canvas, to compare shapes drawn. */
+export async function mascara(page: Page, [x, y, w, h]: readonly [number, number, number, number]): Promise<string> {
+  return page.evaluate(
+    ([cx, cy, cw, ch]) => {
+      const c = document.getElementById("board") as HTMLCanvasElement;
+      const d = c.getContext("2d")!.getImageData(cx, cy, cw, ch).data;
+      let s = "";
+      for (let i = 3; i < d.length; i += 4) s += d[i] > 200 ? "1" : "0";
+      return s;
+    },
+    [x, y, w, h] as const,
+  );
+}
+
 /** Texto do indicador de zoom da toolbar (ex.: "100%"). */
 export const zoom = (page: Page) => page.locator("#zoom");
 

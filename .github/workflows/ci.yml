@@ -1,18 +1,33 @@
-# Quality gates do projeto (QG-01 .. QG-11).
+# Project quality gates (QG-01 .. QG-09; QG-10 lives in pr-title.yml and
+# QG-11 in bench.yml).
 #
-# Os `name:` de cada job são usados como status checks obrigatórios na
-# proteção da branch `main` — NÃO renomeie sem atualizar as regras do repo.
+# Layout (each heavy job compiles the workspace exactly once):
+#
+#   changes ─┬─ rust   fmt → clippy (native + wasm32) → sqlx → llvm-cov nextest
+#            │         (tests and coverage in a single pass) → doctests
+#            └─ web    wasm-pack + size budget → server build → Playwright
+#   gates (matrix)     one lightweight job per gate, named after its status check
+#   deny               cargo-deny (no compilation; always runs)
+#
+# The required status checks on `main` are the `gates` matrix job names (fmt,
+# clippy, test, sqlx, coverage, wasm, e2e), plus `deny` and `pr-title`. Do NOT
+# rename them without updating the branch protection rules. A job skipped by
+# `if:` counts as passing for branch protection, so the gates always run
+# (`!cancelled()`) and fail explicitly when the heavy job failed.
+#
+# Docs-only PRs skip compilation: `changes` decides and the gates pass without
+# running anything. On `main` everything always runs (coverage baseline and the
+# `canvas-pkg` artifact used by the deploy).
 name: CI
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
   push:
     branches: [main]
   workflow_dispatch:
 
-# Cancela execuções antigas do mesmo ref. Em `main` não cancelamos, para que
-# todo push gere sua baseline de cobertura (QG-09).
+# Cancel superseded runs of the same PR. Runs on `main` are never cancelled,
+# so every push records its coverage baseline (QG-09) and gets deployed.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -22,28 +37,51 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # As macros `query!` do sqlx usam os metadados versionados em `.sqlx/`.
+  # sqlx `query!` macros read the metadata committed in `.sqlx/`.
   SQLX_OFFLINE: true
+  # Only `main` writes build caches: PRs restore from it instead of competing
+  # for the repository's 10 GB of cache storage.
+  SAVE_CACHE: ${{ github.ref == 'refs/heads/main' }}
 
 jobs:
-  # QG-01 — formatação.
-  fmt:
-    name: fmt
+  # Decides whether the PR touches anything besides documentation.
+  changes:
+    name: changes
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
-        with:
-          toolchain: stable
-          components: rustfmt
-      - run: cargo fmt --all --check
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!docs/**'
+              - '!LICENSE*'
 
-  # QG-02 — lints (nativo + wasm32 para o crate canvas).
-  clippy:
-    name: clippy
+  # QG-01..QG-05 and QG-09 in a single job sharing one toolchain and cache.
+  # Every gate runs even if an earlier one failed (`!cancelled()`), so a PR
+  # shows all problems at once; each outcome goes to `outputs` and is
+  # published by the `gates` job.
+  rust:
+    name: rust
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      fmt: ${{ steps.fmt.outcome }}
+      clippy: ${{ steps.clippy.outcome == 'success' && steps.clippy_wasm.outcome == 'success' && 'success' || 'failure' }}
+      sqlx: ${{ steps.sqlx.outcome }}
+      test: ${{ steps.cov.outcome == 'success' && steps.doctests.outcome == 'success' && 'success' || 'failure' }}
+      coverage: ${{ steps.cov.outcome == 'success' && steps.cov_gate.outcome != 'failure' && 'success' || 'failure' }}
+    env:
+      COVERAGE_TOLERANCE: "0.1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,66 +89,224 @@ jobs:
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
         with:
           toolchain: stable
-          components: clippy
+          components: rustfmt, clippy, llvm-tools-preview
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - name: clippy (workspace, nativo)
+        with:
+          save-if: ${{ env.SAVE_CACHE }}
+      # Prebuilt binaries. sqlx-cli has no release binaries of its own; the
+      # install-action falls back to cargo-binstall, which fetches it from
+      # quickinstall.
+      - uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
+        with:
+          tool: cargo-nextest,cargo-llvm-cov,sqlx-cli
+
+      # QG-01 — formatting.
+      - id: fmt
+        name: fmt
+        if: ${{ !cancelled() }}
+        run: cargo fmt --all --check
+
+      # QG-02 — lints (native, plus wasm32 for the canvas crate).
+      - id: clippy
+        name: clippy (workspace, native)
+        if: ${{ !cancelled() }}
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: clippy (canvas, wasm32)
+      - id: clippy_wasm
+        name: clippy (canvas, wasm32)
+        if: ${{ !cancelled() }}
         run: cargo clippy -p canvas --target wasm32-unknown-unknown -- -D warnings
 
-  # QG-03/QG-04 — testes unitários, de integração e de propriedade
-  # (convergência via proptest em crates/canvas/tests) + doctests.
-  test:
-    name: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
-        with:
-          tool: cargo-nextest
-      - name: nextest
-        run: cargo nextest run --workspace
-      # O nextest não executa doctests.
-      - name: doctests
-        run: cargo test --doc --workspace
-
-  # QG-05 — os metadados offline em `.sqlx/` precisam estar em dia com as queries.
-  sqlx:
-    name: sqlx
-    runs-on: ubuntu-latest
-    env:
-      # `prepare` precisa de um banco real para validar as queries.
-      SQLX_OFFLINE: false
-      DATABASE_URL: sqlite://${{ github.workspace }}/target/sqlx-check.db
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      # sqlx-cli não publica binários: o install-action cai no cargo-binstall,
-      # que compila a partir do fonte (lento, mas fica no cache do rust-cache).
-      - uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
-        with:
-          tool: sqlx-cli
-      - name: criar banco temporário e aplicar migrações
+      # QG-05 — the offline metadata in `.sqlx/` must match the queries.
+      # Reuses the dependency `check` artifacts built by clippy.
+      - id: sqlx
+        name: sqlx prepare --check
+        if: ${{ !cancelled() }}
+        env:
+          # `prepare` needs a real database to validate the queries.
+          SQLX_OFFLINE: false
+          DATABASE_URL: sqlite://${{ github.workspace }}/target/sqlx-check.db
         run: |
           mkdir -p target
+          rm -f target/sqlx-check.db
           sqlx database create
           sqlx migrate run --source crates/server/migrations
-      - name: cargo sqlx prepare --check
-        run: cargo sqlx prepare --workspace --check
+          cargo sqlx prepare --workspace --check
 
-  # QG-06 — advisories, licenças, bans e fontes (ver deny.toml).
+      # QG-03/QG-04 + QG-09 — unit, integration and property tests (proptest
+      # convergence in crates/canvas/tests), instrumented: one nextest run
+      # yields both the test results and the coverage report.
+      - id: cov
+        name: tests (nextest) + coverage
+        if: ${{ !cancelled() }}
+        run: |
+          cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
+          cargo llvm-cov report --summary-only --json --output-path coverage.json
+          pct="$(jq -r '.data[0].totals.lines.percent' coverage.json)"
+          printf '%.2f\n' "$pct" > coverage-pct.txt
+          echo "Line coverage: $(cat coverage-pct.txt)%"
+
+      # nextest does not run doctests.
+      - id: doctests
+        name: doctests
+        if: ${{ !cancelled() }}
+        run: cargo test --doc --workspace
+
+      # --- QG-09, push to main: store the baseline ---
+      #
+      # The baseline lives in actions/cache: PRs can read caches created on the
+      # base branch without an extra token. Every push to main saves a unique
+      # key (`coverage-main-<run_id>`; caches are immutable) and PRs restore by
+      # the `coverage-main-` prefix, which returns the newest entry. Caches
+      # unused for 7 days are evicted; the PR then passes with a notice until
+      # the next push to main.
+      - name: prepare baseline
+        if: ${{ !cancelled() && steps.cov.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: |
+          mkdir -p .coverage-baseline
+          cp coverage-pct.txt .coverage-baseline/coverage-main.txt
+      - name: save baseline
+        if: ${{ !cancelled() && steps.cov.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .coverage-baseline
+          key: coverage-main-${{ github.run_id }}
+
+      # --- QG-09, PR: compare against the main baseline ---
+      - name: restore main baseline
+        if: ${{ !cancelled() && steps.cov.outcome == 'success' && github.event_name == 'pull_request' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .coverage-baseline
+          # Deliberately missing key: forces restore-keys (newest entry).
+          key: coverage-main-restore-${{ github.run_id }}
+          restore-keys: coverage-main-
+      - id: cov_gate
+        name: compare coverage with baseline
+        if: ${{ !cancelled() && steps.cov.outcome == 'success' && github.event_name == 'pull_request' }}
+        run: |
+          pr="$(cat coverage-pct.txt)"
+          base_file=.coverage-baseline/coverage-main.txt
+          {
+            echo "## Coverage (QG-09)"
+            echo
+            echo "| | Lines |"
+            echo "|---|---|"
+            echo "| PR | ${pr}% |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ ! -f "$base_file" ]]; then
+            echo "| main | (no baseline) |" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Coverage::No main baseline yet; gate skipped for this run."
+            exit 0
+          fi
+
+          base="$(cat "$base_file")"
+          min="$(awk -v b="$base" -v t="$COVERAGE_TOLERANCE" 'BEGIN { printf "%.2f", b - t }')"
+          {
+            echo "| main | ${base}% |"
+            echo "| minimum | ${min}% (tolerance ${COVERAGE_TOLERANCE} pp) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if awk -v p="$pr" -v m="$min" 'BEGIN { exit !(p < m) }'; then
+            echo "::error title=Coverage::PR coverage (${pr}%) is below main (${base}%) minus the tolerance (${COVERAGE_TOLERANCE})."
+            exit 1
+          fi
+          echo "Coverage OK: PR ${pr}% >= minimum ${min}%."
+      - name: coverage summary (main)
+        if: ${{ !cancelled() && steps.cov.outcome == 'success' && github.event_name != 'pull_request' }}
+        run: |
+          {
+            echo "## Coverage (QG-09)"
+            echo
+            echo "Lines: $(cat coverage-pct.txt)%"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() && steps.cov.outcome == 'success' }}
+        with:
+          name: coverage-lcov
+          path: lcov.info
+          retention-days: 7
+
+  # QG-07 + QG-08 — wasm build (with size budget) and Playwright E2E in one
+  # job: the pkg is built once and served by the dev server. Playwright's
+  # webServer starts the server itself (`cargo run -p server`); building it
+  # first just keeps compilation out of Playwright's startup timeout.
+  web:
+    name: web
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      wasm: ${{ steps.wasm_build.outcome == 'success' && steps.wasm_size.outcome == 'success' && 'success' || 'failure' }}
+      e2e: ${{ steps.e2e.outcome }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ env.SAVE_CACHE }}
+      - uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
+        with:
+          tool: wasm-pack
+
+      # QG-07 — wasm build and size budget.
+      - id: wasm_build
+        name: wasm-pack build
+        run: wasm-pack build crates/canvas --target web --release
+      - id: wasm_size
+        name: size budget (gzip)
+        run: scripts/check-wasm-size.sh crates/canvas/pkg/canvas_bg.wasm
+      # Consumed by deploy.yml (the same pkg that passed E2E).
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: canvas-pkg
+          path: crates/canvas/pkg
+          if-no-files-found: error
+          retention-days: 7
+
+      # QG-08 — E2E. Requires the wasm build above to have passed.
+      - name: build server
+        run: cargo build -p server
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: npm ci
+        working-directory: e2e
+        run: npm ci
+      # Playwright browsers are cached (version pinned by package-lock). On a
+      # cache hit we skip `--with-deps`: Chromium's system libraries already
+      # ship with the runner image (it includes Google Chrome), and apt-get
+      # would cost ~12 s per run. On a miss, install everything.
+      - id: pw_cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+      - name: install Chromium (headless shell)
+        if: steps.pw_cache.outputs.cache-hit != 'true'
+        working-directory: e2e
+        run: npx playwright install --with-deps --only-shell chromium
+      - id: e2e
+        name: playwright
+        working-directory: e2e
+        run: npx playwright test
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          retention-days: 7
+
+  # QG-06 — advisories, licenses, bans and sources (see deny.toml). Compiles
+  # nothing and takes seconds, so it always runs (docs-only PRs included).
   deny:
     name: deny
     runs-on: ubuntu-latest
@@ -126,200 +322,37 @@ jobs:
           tool: cargo-deny
       - run: cargo deny check
 
-  # QG-07 — build do wasm e orçamento de tamanho.
-  wasm:
-    name: wasm
+  # Publishes one status check per gate, under the name branch protection
+  # requires. Passes if the gate passed in its heavy job, or if the PR is
+  # docs-only (heavy jobs skipped on purpose).
+  gates:
+    name: ${{ matrix.gate }}
+    needs: [changes, rust, web]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    timeout-minutes: 2
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [fmt, clippy, test, sqlx, coverage, wasm, e2e]
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
-        with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
-        with:
-          tool: wasm-pack
-      - name: wasm-pack build
-        run: wasm-pack build crates/canvas --target web --release
-      - name: orçamento de tamanho (gzip)
-        run: scripts/check-wasm-size.sh crates/canvas/pkg/canvas_bg.wasm
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: canvas-pkg
-          path: crates/canvas/pkg
-          if-no-files-found: error
-          retention-days: 7
-
-  # QG-09 — cobertura de linhas não pode cair em relação à `main`.
-  #
-  # Baseline: guardada via actions/cache. Escolhemos o cache (e não
-  # upload-artifact + action de terceiros) porque PRs já conseguem ler caches
-  # criados na branch base sem token extra nem dependência adicional. Cada push
-  # na main salva uma chave única (`coverage-main-<run_id>`, caches são
-  # imutáveis) e os PRs restauram pelo prefixo `coverage-main-`, que devolve a
-  # entrada mais recente. Caches não usados por 7 dias são removidos pelo
-  # GitHub; nesse caso o PR passa com aviso até o próximo push na main.
-  coverage:
-    name: coverage
-    runs-on: ubuntu-latest
-    env:
-      COVERAGE_TOLERANCE: "0.1"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
-        with:
-          toolchain: stable
-          components: llvm-tools-preview
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
-        with:
-          tool: cargo-llvm-cov,cargo-nextest
-      - name: medir cobertura
+      - name: result
+        env:
+          GATE: ${{ matrix.gate }}
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+          OUTCOME: ${{ needs.rust.outputs[matrix.gate] || needs.web.outputs[matrix.gate] }}
         run: |
-          cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
-          cargo llvm-cov report --summary-only --json --output-path coverage.json
-          pct="$(jq -r '.data[0].totals.lines.percent' coverage.json)"
-          printf '%.2f\n' "$pct" > coverage-pct.txt
-          echo "Cobertura de linhas: $(cat coverage-pct.txt)%"
-
-      # --- push na main: salva a baseline ---
-      - name: preparar baseline
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          mkdir -p .coverage-baseline
-          cp coverage-pct.txt .coverage-baseline/coverage-main.txt
-      - name: salvar baseline
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .coverage-baseline
-          key: coverage-main-${{ github.run_id }}
-
-      # --- PR: compara com a baseline da main ---
-      - name: restaurar baseline da main
-        if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .coverage-baseline
-          # Chave inexistente de propósito: força o uso do restore-keys (mais recente).
-          key: coverage-main-restore-${{ github.run_id }}
-          restore-keys: coverage-main-
-
-      - name: comparar com a baseline
-        if: github.event_name == 'pull_request'
-        run: |
-          pr="$(cat coverage-pct.txt)"
-          base_file=.coverage-baseline/coverage-main.txt
-          {
-            echo "## Cobertura (QG-09)"
-            echo
-            echo "| | Linhas |"
-            echo "|---|---|"
-            echo "| PR | ${pr}% |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          if [[ ! -f "$base_file" ]]; then
-            echo "| main | (sem baseline) |" >> "$GITHUB_STEP_SUMMARY"
-            echo "::notice title=Cobertura::Sem baseline da main ainda; gate ignorado nesta execução."
-            exit 0
-          fi
-
-          base="$(cat "$base_file")"
-          min="$(awk -v b="$base" -v t="$COVERAGE_TOLERANCE" 'BEGIN { printf "%.2f", b - t }')"
-          {
-            echo "| main | ${base}% |"
-            echo "| mínimo aceito | ${min}% (tolerância ${COVERAGE_TOLERANCE} p.p.) |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          if awk -v p="$pr" -v m="$min" 'BEGIN { exit !(p < m) }'; then
-            echo "::error title=Cobertura::Cobertura do PR (${pr}%) abaixo da main (${base}%) menos a tolerância (${COVERAGE_TOLERANCE})."
+          if [[ "$CHANGES" != success ]]; then
+            echo "::error title=$GATE::the 'changes' job ended with '$CHANGES'."
             exit 1
           fi
-          echo "Cobertura OK: PR ${pr}% >= mínimo ${min}%."
-
-      - name: resumo (main)
-        if: github.event_name != 'pull_request'
-        run: |
-          {
-            echo "## Cobertura (QG-09)"
-            echo
-            echo "Linhas: $(cat coverage-pct.txt)%"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: coverage-lcov
-          path: lcov.info
-          retention-days: 7
-
-  # QG-08 — testes end-to-end com Playwright. O webServer do
-  # playwright.config.ts sobe o servidor sozinho (`cargo run -p server`).
-  e2e:
-    name: e2e
-    runs-on: ubuntu-latest
-    needs: wasm
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: canvas-pkg
-          path: crates/canvas/pkg
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - name: build do servidor
-        run: cargo build -p server
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: e2e/package-lock.json
-      - name: playwright
-        working-directory: e2e
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
-          npx playwright test
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: failure()
-        with:
-          name: playwright-report
-          path: e2e/playwright-report
-          retention-days: 7
-
-  # QG-10 — título do PR em Conventional Commits (o squash usa o título).
-  pr-title:
-    name: pr-title
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    permissions:
-      pull-requests: read
-    steps:
-      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # QG-11 — benchmarks (informativo, não obrigatório). Por enquanto só compila;
-  # os benchmarks de verdade entram depois.
-  bench:
-    name: bench
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo bench --workspace --no-run
+          if [[ "$CODE" != true ]]; then
+            echo "Docs-only change; $GATE does not need to run."
+            exit 0
+          fi
+          if [[ "$OUTCOME" != success ]]; then
+            echo "::error title=$GATE::gate '$GATE' failed (outcome: '${OUTCOME:-missing}'); see the 'rust' or 'web' job."
+            exit 1
+          fi
+          echo "$GATE: ok"

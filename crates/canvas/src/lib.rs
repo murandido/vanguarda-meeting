@@ -1,23 +1,27 @@
-//! Motor do Cartazes: estado do quadro num documento Loro (CRDT).
+//! Cartazes engine: board state in a Loro document (CRDT).
 //!
-//! Na Fase 0 o quadro só tem retângulos móveis — o suficiente para provar
-//! a sincronização entre dois navegadores. A câmera (pan/zoom, local de cada
-//! participante) fica em [`camera`]; a ponte para o navegador fica em
-//! [`wasm`], compilada apenas para `wasm32`.
+//! A board holds post-its (CA-02) and stickers (CA-04); see [`shape`] for the
+//! document schema. The camera (pan/zoom, local to each participant) lives in
+//! [`camera`]; the browser bridge lives in [`wasm`], compiled only for `wasm32`.
 
 use std::cell::RefCell;
 
 use loro::{ExportMode, Frontiers, LoroDoc, LoroMap, LoroValue, VersionVector};
 
 pub mod camera;
+pub mod shape;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
 mod limits;
 pub use camera::{Bounds, Camera};
 pub use limits::{LimitError, Limits};
+pub use shape::{Body, Color, RECORD, STICKERS, Shape};
 
 const SHAPES: &str = "shapes";
+
+const KIND_POSTIT: &str = "postit";
+const KIND_STICKER: &str = "sticker";
 
 #[derive(Debug, thiserror::Error)]
 pub enum BoardError {
@@ -27,39 +31,37 @@ pub enum BoardError {
     Export(String),
     #[error("forma inexistente: {0}")]
     UnknownShape(String),
+    #[error("operação não se aplica a esta forma: {0}")]
+    WrongKind(String),
+    #[error("cor desconhecida: {0}")]
+    UnknownColor(String),
+    #[error("figurinha desconhecida: {0}")]
+    UnknownSticker(String),
+    #[error("valor numérico inválido")]
+    NotFinite,
 }
 
-/// Retângulo como lido do documento.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Rect {
-    pub id: String,
-    pub x: f64,
-    pub y: f64,
-    pub w: f64,
-    pub h: f64,
+/// Shapes that touch `view`, in the draw order of `shapes`.
+pub fn cull<'a>(shapes: &'a [Shape], view: &'a Bounds) -> impl Iterator<Item = &'a Shape> + 'a {
+    shapes.iter().filter(move |s| s.bounds().intersects(view))
 }
 
-impl Rect {
-    #[must_use]
-    pub fn bounds(&self) -> Bounds {
-        Bounds::from_rect(self.x, self.y, self.w, self.h)
+fn finite(values: &[f64]) -> Result<(), BoardError> {
+    if values.iter().all(|v| v.is_finite()) {
+        Ok(())
+    } else {
+        Err(BoardError::NotFinite)
     }
 }
 
-/// Retângulos que tocam `view`, na ordem de desenho de `rects`.
-pub fn cull<'a>(rects: &'a [Rect], view: &'a Bounds) -> impl Iterator<Item = &'a Rect> + 'a {
-    rects.iter().filter(move |r| r.bounds().intersects(view))
-}
-
-/// Um quadro: o documento Loro mais o ponto até onde as mudanças locais já
-/// foram enviadas.
+/// A board: the Loro document plus how far local changes have been sent.
 pub struct Board {
     doc: LoroDoc,
     sent: VersionVector,
-    /// Retângulos já lidos do documento, válidos enquanto as frontiers do
-    /// estado não mudarem. Reler o documento inteiro a cada frame custaria
-    /// caro com milhares de formas; comparar frontiers é barato.
-    cache: RefCell<Option<(Frontiers, Vec<Rect>)>>,
+    /// Shapes already read from the document, valid while the state
+    /// frontiers stay the same. Re-reading the whole document every frame
+    /// would be costly with thousands of shapes; comparing frontiers is cheap.
+    cache: RefCell<Option<(Frontiers, Vec<Shape>)>>,
 }
 
 impl Default for Board {
@@ -80,7 +82,7 @@ impl Board {
         }
     }
 
-    /// Recria um quadro a partir de um snapshot salvo no servidor.
+    /// Rebuilds a board from a snapshot stored on the server.
     pub fn from_snapshot(bytes: &[u8]) -> Result<Self, BoardError> {
         let mut board = Self::new();
         board.import(bytes)?;
@@ -88,122 +90,274 @@ impl Board {
         Ok(board)
     }
 
-    /// Fixa o peer id; só necessário em testes que precisam de determinismo.
+    /// Pins the peer id; only needed by tests that require determinism.
     pub fn set_peer_id(&self, peer: u64) {
         self.doc
             .set_peer_id(peer)
-            .expect("peer id definido antes de qualquer edição");
+            .expect("peer id set before any edit");
     }
 
-    fn shapes(&self) -> LoroMap {
+    fn shape_map(&self) -> LoroMap {
         self.doc.get_map(SHAPES)
     }
 
-    pub fn add_rect(&self, id: &str, x: f64, y: f64, w: f64, h: f64) {
+    fn new_shape(&self, id: &str, kind: &str, x: f64, y: f64) -> LoroMap {
         let shape = self
-            .shapes()
+            .shape_map()
             .insert_container(id, LoroMap::new())
-            .expect("chave de mapa válida");
-        for (key, value) in [("x", x), ("y", y), ("w", w), ("h", h)] {
-            shape.insert(key, value).expect("valor escalar");
-        }
-        self.doc.commit();
+            .expect("valid map key");
+        shape.insert("kind", kind).expect("scalar value");
+        shape.insert("x", x).expect("scalar value");
+        shape.insert("y", y).expect("scalar value");
+        shape
     }
 
-    pub fn move_shape(&self, id: &str, x: f64, y: f64) -> Result<(), BoardError> {
+    /// Existing shape map for `id`, and whether it is a post-it.
+    fn shape_entry(&self, id: &str) -> Result<(LoroMap, bool), BoardError> {
         let shape = self
-            .shapes()
+            .shape_map()
             .get(id)
             .and_then(|v| v.into_container().ok())
             .and_then(|c| c.into_map().ok())
             .ok_or_else(|| BoardError::UnknownShape(id.to_owned()))?;
-        shape.insert("x", x).expect("valor escalar");
-        shape.insert("y", y).expect("valor escalar");
+        let is_postit = match shape.get("kind").and_then(|v| v.into_value().ok()) {
+            None => true,
+            Some(LoroValue::String(kind)) => kind.as_str() == KIND_POSTIT,
+            Some(_) => false,
+        };
+        Ok((shape, is_postit))
+    }
+
+    fn postit_entry(&self, id: &str) -> Result<LoroMap, BoardError> {
+        match self.shape_entry(id)? {
+            (shape, true) => Ok(shape),
+            (_, false) => Err(BoardError::WrongKind(id.to_owned())),
+        }
+    }
+
+    fn sticker_entry(&self, id: &str) -> Result<LoroMap, BoardError> {
+        match self.shape_entry(id)? {
+            (shape, false) => Ok(shape),
+            (_, true) => Err(BoardError::WrongKind(id.to_owned())),
+        }
+    }
+
+    /// Creates an empty post-it with its top-left corner at `(x, y)`. The size
+    /// is clamped to the allowed range.
+    pub fn add_postit(
+        &self,
+        id: &str,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        color: Color,
+    ) -> Result<(), BoardError> {
+        finite(&[x, y, w, h])?;
+        let shape = self.new_shape(id, KIND_POSTIT, x, y);
+        shape
+            .insert("w", shape::clamp_size(w))
+            .expect("scalar value");
+        shape
+            .insert("h", shape::clamp_size(h))
+            .expect("scalar value");
+        shape.insert("color", color.name()).expect("scalar value");
+        shape.ensure_mergeable_text("text").expect("valid map key");
+        self.doc.commit();
+        Ok(())
+    }
+
+    /// Writes a Phase 0 rectangle (`x, y, w, h` only). New code creates
+    /// post-its with [`Board::add_postit`]; this exists to exercise the legacy
+    /// format, which is read as a yellow post-it without text.
+    pub fn add_rect(&self, id: &str, x: f64, y: f64, w: f64, h: f64) {
+        let shape = self
+            .shape_map()
+            .insert_container(id, LoroMap::new())
+            .expect("valid map key");
+        for (key, value) in [("x", x), ("y", y), ("w", w), ("h", h)] {
+            shape.insert(key, value).expect("scalar value");
+        }
+        self.doc.commit();
+    }
+
+    /// Stamps `emoji` (one of [`STICKERS`]) centered on `(x, y)`.
+    pub fn add_sticker(&self, id: &str, emoji: &str, x: f64, y: f64) -> Result<(), BoardError> {
+        finite(&[x, y])?;
+        if !STICKERS.contains(&emoji) {
+            return Err(BoardError::UnknownSticker(emoji.to_owned()));
+        }
+        let shape = self.new_shape(id, KIND_STICKER, x, y);
+        shape.insert("emoji", emoji).expect("scalar value");
+        shape.insert("scale", 1.0).expect("scalar value");
+        shape.insert("rotation", 0.0).expect("scalar value");
+        self.doc.commit();
+        Ok(())
+    }
+
+    /// Moves any shape: `(x, y)` is a post-it's corner or a sticker's center.
+    pub fn move_shape(&self, id: &str, x: f64, y: f64) -> Result<(), BoardError> {
+        finite(&[x, y])?;
+        let (shape, _) = self.shape_entry(id)?;
+        shape.insert("x", x).expect("scalar value");
+        shape.insert("y", y).expect("scalar value");
+        self.doc.commit();
+        Ok(())
+    }
+
+    /// Resizes a post-it, keeping its top-left corner. The size is clamped.
+    pub fn resize_postit(&self, id: &str, w: f64, h: f64) -> Result<(), BoardError> {
+        finite(&[w, h])?;
+        let shape = self.postit_entry(id)?;
+        shape
+            .insert("w", shape::clamp_size(w))
+            .expect("scalar value");
+        shape
+            .insert("h", shape::clamp_size(h))
+            .expect("scalar value");
+        self.doc.commit();
+        Ok(())
+    }
+
+    pub fn set_color(&self, id: &str, color: Color) -> Result<(), BoardError> {
+        let shape = self.postit_entry(id)?;
+        shape.insert("color", color.name()).expect("scalar value");
+        self.doc.commit();
+        Ok(())
+    }
+
+    /// Replaces a post-it's text with `text` (cut to
+    /// [`shape::MAX_TEXT_CHARS`]), recording only the characters that changed
+    /// so concurrent edits merge instead of overwriting each other.
+    pub fn set_text(&self, id: &str, text: &str) -> Result<(), BoardError> {
+        let shape = self.postit_entry(id)?;
+        // A mergeable child: if two users type into a legacy rectangle (which
+        // has no text yet) at the same time, both end up in the same text
+        // instead of one container replacing the other.
+        let container = shape
+            .ensure_mergeable_text("text")
+            .map_err(|_| BoardError::WrongKind(id.to_owned()))?;
+        let old = container.to_string();
+        if let Some((pos, deleted, inserted)) = shape::text_diff(&old, shape::truncate_text(text)) {
+            if deleted > 0 {
+                container.delete(pos, deleted).expect("range inside text");
+            }
+            if !inserted.is_empty() {
+                container
+                    .insert(pos, inserted)
+                    .expect("position inside text");
+            }
+            self.doc.commit();
+        }
+        Ok(())
+    }
+
+    /// Current text of a post-it (empty for legacy rectangles).
+    pub fn text(&self, id: &str) -> Result<String, BoardError> {
+        let shape = self.postit_entry(id)?;
+        Ok(shape
+            .get("text")
+            .and_then(|v| v.into_container().ok())
+            .and_then(|c| c.into_text().ok())
+            .map(|t| t.to_string())
+            .unwrap_or_default())
+    }
+
+    /// Sets a sticker's scale (clamped) and rotation (radians, normalized).
+    pub fn transform_sticker(&self, id: &str, scale: f64, rotation: f64) -> Result<(), BoardError> {
+        finite(&[scale, rotation])?;
+        let shape = self.sticker_entry(id)?;
+        shape
+            .insert("scale", shape::clamp_scale(scale))
+            .expect("scalar value");
+        shape
+            .insert("rotation", shape::normalize_angle(rotation))
+            .expect("scalar value");
         self.doc.commit();
         Ok(())
     }
 
     pub fn remove_shape(&self, id: &str) {
-        self.shapes().delete(id).expect("chave de mapa válida");
+        self.shape_map().delete(id).expect("valid map key");
         self.doc.commit();
     }
 
-    /// Todos os retângulos, ordenados por id para leitura determinística.
-    /// Essa também é a ordem de desenho: o último fica por cima.
+    /// Every shape in draw order (the last one is on top): post-its, then
+    /// stickers, each group sorted by id. Clients make ids sortable by
+    /// creation time, so newer shapes land on top of older ones.
     #[must_use]
-    pub fn rects(&self) -> Vec<Rect> {
-        self.with_rects(<[Rect]>::to_vec)
+    pub fn shapes(&self) -> Vec<Shape> {
+        self.with_shapes(<[Shape]>::to_vec)
     }
 
-    /// Executa `f` sobre os retângulos atuais, relendo o documento só se ele
-    /// mudou desde a última leitura.
-    pub fn with_rects<R>(&self, f: impl FnOnce(&[Rect]) -> R) -> R {
+    /// Runs `f` over the current shapes, re-reading the document only if it
+    /// changed since the last read.
+    pub fn with_shapes<R>(&self, f: impl FnOnce(&[Shape]) -> R) -> R {
         let now = self.doc.state_frontiers();
         let mut cache = self.cache.borrow_mut();
         if cache.as_ref().is_none_or(|(at, _)| *at != now) {
-            *cache = Some((now, self.read_rects()));
+            *cache = Some((now, self.read_shapes()));
         }
-        let (_, rects) = cache.as_ref().expect("cache preenchido acima");
-        f(rects)
+        let (_, shapes) = cache.as_ref().expect("cache filled above");
+        f(shapes)
     }
 
-    /// Geometria dos retângulos visíveis em `view`, como array plano
-    /// `[x, y, w, h, ...]` na ordem de desenho.
+    /// Shape with the given id, if it exists and can be drawn.
     #[must_use]
-    pub fn visible_geometry(&self, view: &Bounds) -> Vec<f64> {
-        self.with_rects(|rects| {
-            cull(rects, view)
-                .flat_map(|r| [r.x, r.y, r.w, r.h])
+    pub fn shape(&self, id: &str) -> Option<Shape> {
+        self.with_shapes(|shapes| shapes.iter().find(|s| s.id == id).cloned())
+    }
+
+    /// Text of the shape at `index` in [`Board::shapes`] (empty for stickers
+    /// or an index out of range). JS calls this with the index from a record
+    /// only when the text version in that record is new to it.
+    #[must_use]
+    pub fn text_at(&self, index: usize) -> String {
+        self.with_shapes(|shapes| match shapes.get(index).map(|s| &s.body) {
+            Some(Body::Postit { text, .. }) => text.clone(),
+            _ => String::new(),
+        })
+    }
+
+    /// Records ([`RECORD`] values each) of the shapes visible in `view`, in
+    /// draw order.
+    #[must_use]
+    pub fn visible_records(&self, view: &Bounds) -> Vec<f64> {
+        self.with_shapes(|shapes| {
+            shapes
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.bounds().intersects(view))
+                .flat_map(|(i, s)| s.record(i))
                 .collect()
         })
     }
 
-    /// Retângulo mais acima (último na ordem de desenho) sob o ponto do mundo.
+    /// Topmost shape (last in draw order) under the world point.
     #[must_use]
-    pub fn hit_test(&self, x: f64, y: f64) -> Option<Rect> {
-        self.with_rects(|rects| {
-            rects
-                .iter()
-                .rev()
-                .find(|r| r.bounds().contains(x, y))
-                .cloned()
-        })
+    pub fn hit_test(&self, x: f64, y: f64) -> Option<Shape> {
+        self.with_shapes(|shapes| shapes.iter().rev().find(|s| s.contains(x, y)).cloned())
     }
 
-    /// Caixa que envolve todo o conteúdo, ou `None` num quadro vazio.
+    /// Box around all content, or `None` for an empty board.
     #[must_use]
     pub fn content_bounds(&self) -> Option<Bounds> {
-        self.with_rects(|rects| rects.iter().map(Rect::bounds).reduce(|a, b| a.union(&b)))
+        self.with_shapes(|shapes| shapes.iter().map(Shape::bounds).reduce(|a, b| a.union(&b)))
     }
 
-    fn read_rects(&self) -> Vec<Rect> {
-        let LoroValue::Map(shapes) = self.shapes().get_deep_value() else {
+    fn read_shapes(&self) -> Vec<Shape> {
+        let LoroValue::Map(entries) = self.shape_map().get_deep_value() else {
             return Vec::new();
         };
-        let mut rects: Vec<Rect> = shapes
+        let mut shapes: Vec<Shape> = entries
             .iter()
-            .filter_map(|(id, value)| {
-                let LoroValue::Map(fields) = value else {
-                    return None;
-                };
-                let num = |k: &str| match fields.get(k) {
-                    Some(LoroValue::Double(n)) => Some(*n),
-                    _ => None,
-                };
-                Some(Rect {
-                    id: id.clone(),
-                    x: num("x")?,
-                    y: num("y")?,
-                    w: num("w")?,
-                    h: num("h")?,
-                })
-            })
+            .filter_map(|(id, value)| Shape::parse(id, value))
             .collect();
-        rects.sort_by(|a, b| a.id.cmp(&b.id));
-        rects
+        shapes.sort_by(|a, b| a.layer().cmp(&b.layer()).then_with(|| a.id.cmp(&b.id)));
+        shapes
     }
 
-    /// Aplica uma atualização ou snapshot vindo de outro participante.
+    /// Applies an update or snapshot from another participant.
     pub fn import(&mut self, bytes: &[u8]) -> Result<(), BoardError> {
         self.doc
             .import(bytes)
@@ -211,7 +365,7 @@ impl Board {
             .map_err(|e| BoardError::Import(e.to_string()))
     }
 
-    /// Mudanças ainda não enviadas, ou `None` se não houver nenhuma.
+    /// Changes not sent yet, or `None` if there are none.
     pub fn take_pending_update(&mut self) -> Result<Option<Vec<u8>>, BoardError> {
         let now = self.doc.oplog_vv();
         if now == self.sent {
@@ -233,127 +387,4 @@ impl Board {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn add_and_move_rect() {
-        let board = Board::new();
-        board.add_rect("a", 0.0, 0.0, 10.0, 20.0);
-        board.move_shape("a", 5.0, 6.0).unwrap();
-        assert_eq!(
-            board.rects(),
-            vec![Rect {
-                id: "a".into(),
-                x: 5.0,
-                y: 6.0,
-                w: 10.0,
-                h: 20.0
-            }]
-        );
-    }
-
-    #[test]
-    fn moving_unknown_shape_fails() {
-        let board = Board::new();
-        assert!(matches!(
-            board.move_shape("nada", 1.0, 1.0),
-            Err(BoardError::UnknownShape(_))
-        ));
-    }
-
-    #[test]
-    fn pending_update_is_taken_once() {
-        let mut board = Board::new();
-        assert!(board.take_pending_update().unwrap().is_none());
-        board.add_rect("a", 0.0, 0.0, 1.0, 1.0);
-        assert!(board.take_pending_update().unwrap().is_some());
-        assert!(board.take_pending_update().unwrap().is_none());
-    }
-
-    #[test]
-    fn snapshot_restores_state() {
-        let board = Board::new();
-        board.add_rect("a", 1.0, 2.0, 3.0, 4.0);
-        let restored = Board::from_snapshot(&board.snapshot().unwrap()).unwrap();
-        assert_eq!(restored.rects(), board.rects());
-    }
-
-    #[test]
-    fn cache_follows_local_and_remote_changes() {
-        let mut a = Board::new();
-        let b = Board::new();
-        a.add_rect("a", 0.0, 0.0, 10.0, 10.0);
-        assert_eq!(a.rects().len(), 1);
-        a.move_shape("a", 5.0, 5.0).unwrap();
-        assert_eq!(a.rects()[0].x, 5.0);
-        b.add_rect("b", 1.0, 1.0, 1.0, 1.0);
-        let mut b = b;
-        a.import(&b.take_pending_update().unwrap().unwrap())
-            .unwrap();
-        assert_eq!(a.rects().len(), 2);
-        a.remove_shape("a");
-        assert_eq!(
-            a.rects().iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
-            ["b"]
-        );
-    }
-
-    #[test]
-    fn visible_geometry_culls_to_viewport() {
-        let board = Board::new();
-        board.add_rect("a", 0.0, 0.0, 10.0, 10.0);
-        board.add_rect("b", 500.0, 500.0, 10.0, 10.0);
-        board.add_rect("c", -50.0, -50.0, 45.0, 45.0);
-        let view = Camera::default().viewport(100.0, 100.0);
-        assert_eq!(board.visible_geometry(&view), vec![0.0, 0.0, 10.0, 10.0]);
-        let far = Camera::new(400.0, 400.0, 1.0).viewport(200.0, 200.0);
-        assert_eq!(board.visible_geometry(&far), vec![500.0, 500.0, 10.0, 10.0]);
-        let all = Camera::new(-100.0, -100.0, 0.1).viewport(1000.0, 1000.0);
-        assert_eq!(board.visible_geometry(&all).len(), 12);
-    }
-
-    #[test]
-    fn cull_keeps_draw_order() {
-        let rects: Vec<Rect> = (0..5)
-            .map(|i| Rect {
-                id: format!("r{i}"),
-                x: f64::from(i) * 100.0,
-                y: 0.0,
-                w: 50.0,
-                h: 50.0,
-            })
-            .collect();
-        let view = Bounds::from_rect(160.0, 10.0, 200.0, 10.0);
-        let ids: Vec<_> = cull(&rects, &view).map(|r| r.id.as_str()).collect();
-        assert_eq!(ids, ["r2", "r3"]);
-    }
-
-    #[test]
-    fn hit_test_returns_topmost() {
-        let board = Board::new();
-        assert!(board.hit_test(0.0, 0.0).is_none());
-        board.add_rect("a", 0.0, 0.0, 100.0, 100.0);
-        board.add_rect("b", 50.0, 50.0, 100.0, 100.0);
-        assert_eq!(board.hit_test(10.0, 10.0).unwrap().id, "a");
-        assert_eq!(board.hit_test(60.0, 60.0).unwrap().id, "b");
-        assert!(board.hit_test(200.0, 10.0).is_none());
-    }
-
-    #[test]
-    fn content_bounds_wraps_everything() {
-        let board = Board::new();
-        assert!(board.content_bounds().is_none());
-        board.add_rect("a", -10.0, 5.0, 20.0, 5.0);
-        board.add_rect("b", 100.0, -40.0, 10.0, 10.0);
-        assert_eq!(
-            board.content_bounds(),
-            Some(Bounds {
-                min_x: -10.0,
-                min_y: -40.0,
-                max_x: 110.0,
-                max_y: 10.0
-            })
-        );
-    }
-}
+mod tests;
