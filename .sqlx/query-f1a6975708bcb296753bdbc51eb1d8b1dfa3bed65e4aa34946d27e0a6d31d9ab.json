@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT github_id FROM users WHERE login = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "github_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "github_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "f1a6975708bcb296753bdbc51eb1d8b1dfa3bed65e4aa34946d27e0a6d31d9ab"
+}

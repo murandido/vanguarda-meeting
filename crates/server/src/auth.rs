@@ -6,9 +6,12 @@
 //! que entra sem passar pelo GitHub (só para logins convidados).
 
 use std::{
+    collections::HashMap,
     fmt::Write as _,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+use anyhow::Context as _;
 
 use askama::Template;
 use axum::{
@@ -35,6 +38,8 @@ pub struct AuthConfig {
     pub client_secret: String,
     /// Logins do GitHub convidados, em minúsculas.
     pub allowed: Vec<String>,
+    /// GitHub account ids required for some logins (`login:id` entries).
+    pub github_ids: HashMap<String, i64>,
     /// URL pública do app, sem barra final (base do `redirect_uri`).
     pub public_url: String,
     pub cookie_secure: bool,
@@ -51,12 +56,8 @@ impl AuthConfig {
     /// Lê a configuração de uma fonte de variáveis (testável sem mexer no
     /// ambiente do processo).
     pub fn from_vars(var: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
-        let allowed: Vec<String> = var("ALLOWED_GITHUB_USERS")
-            .unwrap_or_default()
-            .split(',')
-            .map(|s| s.trim().to_lowercase())
-            .filter(|s| !s.is_empty())
-            .collect();
+        let (allowed, github_ids) =
+            parse_allowed(&var("ALLOWED_GITHUB_USERS").unwrap_or_default())?;
         anyhow::ensure!(
             !allowed.is_empty(),
             "ALLOWED_GITHUB_USERS vazio: ninguém conseguiria entrar"
@@ -83,6 +84,7 @@ impl AuthConfig {
             client_id,
             client_secret,
             allowed,
+            github_ids,
             public_url,
             cookie_secure,
             dev_login,
@@ -96,10 +98,44 @@ impl AuthConfig {
         self.allowed.iter().any(|a| a.eq_ignore_ascii_case(login))
     }
 
+    /// GitHub account id required for `login`, if its entry is `login:id`.
+    fn pinned_id(&self, login: &str) -> Option<i64> {
+        self.github_ids.get(&login.to_lowercase()).copied()
+    }
+
     fn cookie(&self, name: &str, value: &str, max_age: i64) -> String {
         let secure = if self.cookie_secure { "; Secure" } else { "" };
         format!("{name}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{secure}")
     }
+}
+
+/// Parses `ALLOWED_GITHUB_USERS`: comma-separated logins, each optionally
+/// followed by the numeric GitHub account id (`login:id`), which is then
+/// required at login.
+fn parse_allowed(raw: &str) -> anyhow::Result<(Vec<String>, HashMap<String, i64>)> {
+    let mut allowed = Vec::new();
+    let mut ids = HashMap::new();
+    for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        let (login, id) = match entry.split_once(':') {
+            Some((login, id)) => {
+                let id = id.trim().parse::<i64>().with_context(|| {
+                    format!("id do GitHub inválido em ALLOWED_GITHUB_USERS: {entry}")
+                })?;
+                (login.trim(), Some(id))
+            }
+            None => (entry, None),
+        };
+        anyhow::ensure!(
+            !login.is_empty(),
+            "login vazio em ALLOWED_GITHUB_USERS: {entry}"
+        );
+        let login = login.to_lowercase();
+        if let Some(id) = id {
+            ids.insert(login.clone(), id);
+        }
+        allowed.push(login);
+    }
+    Ok((allowed, ids))
 }
 
 /// Usuário logado, colocado nas extensões da requisição pelo [`require_user`].
@@ -297,17 +333,38 @@ pub async fn github_callback(
             .into_response();
     }
 
+    let refuse = |reason: &str| {
+        tracing::warn!(
+            login = user.login,
+            github_id = user.id,
+            "login recusado: {reason}"
+        );
+        (
+            AppendHeaders([(header::SET_COOKIE, clear_state.clone())]),
+            Redirect::to("/login?erro=nao-convidado"),
+        )
+            .into_response()
+    };
+    if state
+        .auth
+        .pinned_id(&user.login)
+        .is_some_and(|id| id != user.id)
+    {
+        return refuse("id do GitHub diferente do convidado");
+    }
+
     let login = user.login.to_lowercase();
-    let result = db::upsert_user(
+    let result = db::login_github_user(
         &state.db,
         &login,
-        Some(user.id),
+        user.id,
         user.name.as_deref(),
         user.avatar_url.as_deref(),
     )
     .await;
     match result {
-        Ok(()) => start_session(&state, &login, Some(clear_state)).await,
+        Ok(db::GithubLogin::Accepted) => start_session(&state, &login, Some(clear_state)).await,
+        Ok(db::GithubLogin::Conflict) => refuse("login já vinculado a outra conta do GitHub"),
         Err(e) => {
             tracing::error!("falha ao salvar usuário: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -400,6 +457,25 @@ mod tests {
         assert!(cfg.is_allowed("ANA"));
         assert!(!cfg.is_allowed("carla"));
         assert!(cfg.cookie("c", "v", 10).ends_with("; Secure"));
+    }
+
+    #[test]
+    fn config_accepts_pinned_github_ids() {
+        let cfg = AuthConfig::from_vars(vars(&[
+            ("ALLOWED_GITHUB_USERS", "Ana:12345, bia ,carla: 7"),
+            ("DEV_LOGIN", "1"),
+        ]))
+        .unwrap();
+        assert_eq!(cfg.allowed, ["ana", "bia", "carla"]);
+        assert_eq!(cfg.pinned_id("ANA"), Some(12345));
+        assert_eq!(cfg.pinned_id("bia"), None);
+        assert_eq!(cfg.pinned_id("carla"), Some(7));
+
+        for bad in ["ana:abc", ":12", "ana:"] {
+            let err =
+                AuthConfig::from_vars(vars(&[("ALLOWED_GITHUB_USERS", bad), ("DEV_LOGIN", "1")]));
+            assert!(err.is_err(), "{bad} deveria ser recusado");
+        }
     }
 
     #[test]

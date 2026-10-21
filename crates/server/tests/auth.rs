@@ -14,8 +14,9 @@ use server::{AuthConfig, db};
 use std::collections::HashMap;
 use tokio::net::TcpListener;
 
-/// GitHub falso: o `code` vira o token `tok-<code>`, e o token vira o login.
-/// O code `falha` faz a troca de token devolver 500.
+/// Fake GitHub: the `code` becomes the token `tok-<code>`, and the token
+/// becomes the login. The code may carry the account id (`login@id`; 42 by
+/// default). The code `falha` makes the token exchange answer 500.
 async fn fake_github() -> String {
     async fn token(Form(form): Form<HashMap<String, String>>) -> Result<Json<Value>, StatusCode> {
         assert_eq!(form["client_id"], "cid");
@@ -27,9 +28,12 @@ async fn fake_github() -> String {
     }
     async fn user(headers: HeaderMap) -> Json<Value> {
         let auth = headers[header::AUTHORIZATION].to_str().unwrap();
-        let login = auth.strip_prefix("Bearer tok-").unwrap();
+        let code = auth.strip_prefix("Bearer tok-").unwrap();
+        let (login, id) = code
+            .split_once('@')
+            .map_or((code, 42), |(l, id)| (l, id.parse().unwrap()));
         assert!(headers.contains_key(header::USER_AGENT));
-        Json(json!({ "login": login, "id": 42, "name": "Nome", "avatar_url": null }))
+        Json(json!({ "login": login, "id": id, "name": "Nome", "avatar_url": null }))
     }
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -42,9 +46,13 @@ async fn fake_github() -> String {
 }
 
 async fn oauth_app() -> (Router, sqlx::SqlitePool) {
+    oauth_app_with("ana,bia").await
+}
+
+async fn oauth_app_with(allowed: &str) -> (Router, sqlx::SqlitePool) {
     let github = fake_github().await;
     let auth = AuthConfig::from_vars(|k| match k {
-        "ALLOWED_GITHUB_USERS" => Some("ana,bia".into()),
+        "ALLOWED_GITHUB_USERS" => Some(allowed.into()),
         "GITHUB_CLIENT_ID" => Some("cid".into()),
         "GITHUB_CLIENT_SECRET" => Some("segredo".into()),
         "PUBLIC_URL" => Some("https://vanguarda.exemplo".into()),
@@ -208,4 +216,96 @@ async fn expired_session_is_rejected() {
     db::create_session(&pool, "velha", "ana", 1).await.unwrap();
     let res = get(&app, "/", Some("vanguarda_session=velha")).await;
     assert_eq!(location(&res), "/login");
+}
+
+/// Runs the whole OAuth flow and returns the session cookie, if let in.
+async fn oauth_login(app: &Router, code: &str) -> Result<String, String> {
+    let (cookie, state) = start(app).await;
+    let res = callback(app, &cookie, code, &state).await;
+    session_of(&res).ok_or_else(|| location(&res).to_owned())
+}
+
+#[tokio::test]
+async fn pinned_github_id_must_match() {
+    let (app, pool) = oauth_app_with("ana:7,bia").await;
+    assert_eq!(
+        oauth_login(&app, "ana@42").await.unwrap_err(),
+        "/login?erro=nao-convidado"
+    );
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), None);
+    oauth_login(&app, "ana@7").await.expect("id certo entra");
+    // Entries without an id still work (backward compatible).
+    oauth_login(&app, "bia@99")
+        .await
+        .expect("login sem id entra");
+}
+
+#[tokio::test]
+async fn login_stays_bound_to_first_github_account() {
+    let (app, pool) = oauth_app().await;
+    oauth_login(&app, "ana@42").await.expect("primeiro uso vincula");
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(42));
+
+    // Another account registered "ana" after the original one released it.
+    assert_eq!(
+        oauth_login(&app, "ana@666").await.unwrap_err(),
+        "/login?erro=nao-convidado"
+    );
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(42));
+    oauth_login(&app, "Ana@42").await.expect("a dona continua entrando");
+}
+
+#[tokio::test]
+async fn renamed_account_moves_its_row() {
+    let (app, pool) = oauth_app().await;
+    let old = oauth_login(&app, "ana@42").await.unwrap();
+
+    // Account 42 became "bia" on GitHub (and "bia" is invited).
+    let new = oauth_login(&app, "bia@42").await.expect("renomeada entra");
+    assert_eq!(db::github_id_of(&pool, "bia").await.unwrap(), Some(42));
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), None);
+    assert_eq!(location(&get(&app, "/", Some(&old)).await), "/login");
+    let res = get(&app, "/", Some(&new)).await;
+    assert!(body_text(res).await.contains("<span>bia</span>"));
+
+    // Whoever registers the old name is someone else: a new row.
+    oauth_login(&app, "ana@77").await.unwrap();
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(77));
+}
+
+#[tokio::test]
+async fn rename_onto_someone_elses_login_is_refused() {
+    let (app, pool) = oauth_app().await;
+    oauth_login(&app, "ana@42").await.unwrap();
+    oauth_login(&app, "bia@43").await.unwrap();
+    assert_eq!(
+        oauth_login(&app, "bia@42").await.unwrap_err(),
+        "/login?erro=nao-convidado"
+    );
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(42));
+    assert_eq!(db::github_id_of(&pool, "bia").await.unwrap(), Some(43));
+}
+
+#[tokio::test]
+async fn rename_replaces_row_without_github_id() {
+    let (app, pool) = oauth_app().await;
+    db::upsert_user(&pool, "bia", None, None, None)
+        .await
+        .unwrap();
+    oauth_login(&app, "ana@42").await.unwrap();
+    oauth_login(&app, "bia@42").await.expect("linha sem id dá lugar");
+    assert_eq!(db::github_id_of(&pool, "bia").await.unwrap(), Some(42));
+
+    // Row without an id (development login) and a new account: just bind.
+    db::upsert_user(&pool, "ana", None, None, None)
+        .await
+        .unwrap();
+    oauth_login(&app, "ana@5").await.unwrap();
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(5));
+
+    // The development login's upsert never overwrites github_id.
+    db::upsert_user(&pool, "ana", Some(6), None, None)
+        .await
+        .unwrap();
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(5));
 }
