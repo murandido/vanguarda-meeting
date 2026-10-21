@@ -5,7 +5,7 @@
 #   2. reaproveita o pkg WASM do run de CI (artifact `canvas-pkg`);
 #   3. publica a imagem linux/arm64 no GHCR com a tag do commit;
 #   4. copia deploy/ para /opt/vanguarda e roda deploy/deploy.sh, que faz
-#      health check e rollback.
+#      health check e rollback e instala o timer de backup do SQLite.
 #
 # Secrets (environment `production`):
 #   VPS_HOST         IP ou nome da VPS
@@ -143,7 +143,10 @@ jobs:
           TAG: ${{ needs.image.outputs.tag }}
         run: |
           ssh_opts=(-i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o BatchMode=yes)
-          scp "${ssh_opts[@]}" deploy/compose.yml deploy/deploy.sh deploy/vanguarda-meeting.caddy "$TARGET_HOST:/opt/vanguarda/"
+          scp -r "${ssh_opts[@]}" \
+            deploy/compose.yml deploy/deploy.sh deploy/vanguarda-meeting.caddy \
+            deploy/backup.sh deploy/restore.sh deploy/systemd \
+            "$TARGET_HOST:/opt/vanguarda/"
           # A tag é expandida aqui de propósito (é um SHA, sem caracteres especiais).
           # shellcheck disable=SC2029
           ssh "${ssh_opts[@]}" "$TARGET_HOST" "/opt/vanguarda/deploy.sh '$TAG'"
