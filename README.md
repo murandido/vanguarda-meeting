@@ -27,7 +27,7 @@ Portuguese; code and documentation are in English.
 | Cartazes | Multiple boards (create, rename, archive) and a hardened WebSocket (Origin check, size limits, validated imports, batched saves, keep-alive) | ✅ Shipped |
 | Cartazes | Sticky notes with text, colors and resizing; stickers you can move, scale and rotate | ✅ Shipped |
 | Cartazes | Per-user undo and redo | 🚧 In progress ([#21](https://github.com/murandido/vanguarda-meeting/pull/21)) |
-| Cartazes | Arrows and connectors | 🚧 In progress |
+| Cartazes | Arrows between shapes, curved or straight, that follow the shapes as they move | ✅ Shipped |
 | Ritmo | Weekly board per person with To do / Doing / Done columns and personal projects | ✅ Shipped |
 | Ritmo | Weekly commitment ("prometido") frozen at the meeting, with done/total score | ✅ Shipped |
 | Ritmo | Mobile daily check-in and a shared "today" feed | ✅ Shipped |
@@ -137,7 +137,10 @@ window. Then:
   edits a note's text; the floating bar changes its color and the corner handle
   resizes it. Pick a sticker under "Figurinhas" and click to place it; drag,
   scale with the corner handle and rotate with the top handle or `[` / `]`.
-  `Delete` removes the selection. Space + drag, the middle button or a
+  Hover a shape and drag one of its edge dots onto another shape (or empty
+  space) to draw an arrow, or use the "Seta" tool (`A`); click an arrow to
+  select it and `R` toggles curved/straight.
+  `Delete` removes the selection (and the arrows attached to a shape). Space + drag, the middle button or a
   two-finger scroll pans; Ctrl/Cmd + wheel or a pinch zooms (10%–400%) around
   the pointer; `Shift+0` resets to 100% and `Shift+1` fits the content;
 - open `/ritmo` in both: create a project, add tasks, confirm the week and do
