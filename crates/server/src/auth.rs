@@ -183,20 +183,27 @@ pub async fn require_user(State(state): State<AppState>, mut req: Request, next:
         None => Ok(None),
     };
     match login {
-        Ok(Some(login)) => {
+        // Invite revoked: the session stops working right away (and is
+        // deleted by the next cleanup).
+        Ok(Some(login)) if state.auth.is_allowed(&login) => {
             req.extensions_mut().insert(CurrentUser { login });
             next.run(req).await
         }
         // WebSocket e SSE não seguem redirecionamento para a página de login.
-        Ok(None) if path.starts_with("/ws/") || path == "/ritmo/events" => {
+        Ok(_) if path.starts_with("/ws/") || path == "/ritmo/events" => {
             StatusCode::UNAUTHORIZED.into_response()
         }
-        Ok(None) => Redirect::to("/login").into_response(),
+        Ok(_) => Redirect::to("/login").into_response(),
         Err(e) => {
             tracing::error!("falha ao ler sessão: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
+}
+
+/// Deletes sessions that expired or belong to logins no longer invited.
+pub async fn prune_sessions(state: &AppState) -> sqlx::Result<u64> {
+    db::prune_sessions(&state.db, &state.auth.allowed, now()).await
 }
 
 #[derive(Template)]

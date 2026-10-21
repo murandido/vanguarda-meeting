@@ -290,6 +290,21 @@ pub async fn session_login(db: &SqlitePool, id: &str, now: i64) -> sqlx::Result<
     Ok(row.map(|r| r.login))
 }
 
+/// Deletes expired sessions and those of logins outside `allowed` (revoked
+/// invites). Returns how many were deleted.
+pub async fn prune_sessions(db: &SqlitePool, allowed: &[String], now: i64) -> sqlx::Result<u64> {
+    let allowed = serde_json::to_string(allowed).expect("lista de strings vira JSON");
+    let result = sqlx::query!(
+        "DELETE FROM sessions
+         WHERE expires_at <= ? OR login NOT IN (SELECT value FROM json_each(?))",
+        now,
+        allowed
+    )
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected())
+}
+
 pub async fn delete_session(db: &SqlitePool, id: &str) -> sqlx::Result<()> {
     sqlx::query!("DELETE FROM sessions WHERE id = ?", id)
         .execute(db)

@@ -243,7 +243,9 @@ async fn pinned_github_id_must_match() {
 #[tokio::test]
 async fn login_stays_bound_to_first_github_account() {
     let (app, pool) = oauth_app().await;
-    oauth_login(&app, "ana@42").await.expect("primeiro uso vincula");
+    oauth_login(&app, "ana@42")
+        .await
+        .expect("primeiro uso vincula");
     assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(42));
 
     // Another account registered "ana" after the original one released it.
@@ -252,7 +254,9 @@ async fn login_stays_bound_to_first_github_account() {
         "/login?erro=nao-convidado"
     );
     assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(42));
-    oauth_login(&app, "Ana@42").await.expect("a dona continua entrando");
+    oauth_login(&app, "Ana@42")
+        .await
+        .expect("a dona continua entrando");
 }
 
 #[tokio::test]
@@ -293,7 +297,9 @@ async fn rename_replaces_row_without_github_id() {
         .await
         .unwrap();
     oauth_login(&app, "ana@42").await.unwrap();
-    oauth_login(&app, "bia@42").await.expect("linha sem id dá lugar");
+    oauth_login(&app, "bia@42")
+        .await
+        .expect("linha sem id dá lugar");
     assert_eq!(db::github_id_of(&pool, "bia").await.unwrap(), Some(42));
 
     // Row without an id (development login) and a new account: just bind.
@@ -308,4 +314,67 @@ async fn rename_replaces_row_without_github_id() {
         .await
         .unwrap();
     assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(5));
+}
+
+fn dev_auth_for(allowed: &str) -> AuthConfig {
+    AuthConfig::from_vars(|k| match k {
+        "ALLOWED_GITHUB_USERS" => Some(allowed.into()),
+        "DEV_LOGIN" => Some("1".into()),
+        _ => None,
+    })
+    .unwrap()
+}
+
+#[tokio::test]
+async fn removing_guest_revokes_access_on_restart() {
+    let pool = memory_db().await;
+    let before = router(pool.clone(), dev_auth_for("ana,bia"));
+    let bia = common::dev_session(&before, "bia").await;
+    let ana = common::dev_session(&before, "ana").await;
+    let bia_id = bia.split_once('=').unwrap().1.to_owned();
+
+    // "Restart" without bia on the list: her session stops working at once.
+    let after = router(pool.clone(), dev_auth_for("ana"));
+    assert_eq!(location(&get(&after, "/", Some(&bia)).await), "/login");
+    assert_eq!(
+        get(&after, "/ws/quadro", Some(&bia)).await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(get(&after, "/", Some(&ana)).await.status(), StatusCode::OK);
+
+    // The boot cleanup deletes the revoked (and expired) sessions.
+    db::create_session(&pool, "velha", "ana", 1).await.unwrap();
+    let state = server::AppState::new(pool.clone(), dev_auth_for("ana"));
+    assert_eq!(server::auth::prune_sessions(&state).await.unwrap(), 2);
+    assert_eq!(db::session_login(&pool, &bia_id, 0).await.unwrap(), None);
+    assert_eq!(db::session_login(&pool, "velha", 0).await.unwrap(), None);
+    assert_eq!(get(&after, "/", Some(&ana)).await.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn periodic_cleanup_runs_at_boot_and_repeats() {
+    let pool = memory_db().await;
+    db::upsert_user(&pool, "ana", None, None, None)
+        .await
+        .unwrap();
+    db::create_session(&pool, "s1", "ana", 1).await.unwrap();
+    let state = server::AppState::new(pool.clone(), dev_auth_for("ana"));
+    let task = server::spawn_session_cleanup(state, std::time::Duration::from_millis(20));
+
+    let wait = |id: &'static str| {
+        let pool = pool.clone();
+        async move {
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while db::session_login(&pool, id, 0).await.unwrap().is_some() {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .expect("sessão apagada pela limpeza");
+        }
+    };
+    wait("s1").await;
+    db::create_session(&pool, "s2", "ana", 1).await.unwrap();
+    wait("s2").await;
+    task.abort();
 }

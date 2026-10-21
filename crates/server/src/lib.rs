@@ -85,6 +85,30 @@ impl Clock {
     }
 }
 
+/// How often expired and revoked sessions are cleaned up.
+pub const SESSION_CLEANUP_EVERY: std::time::Duration = std::time::Duration::from_hours(1);
+
+/// Cleans up sessions now (at boot, so removed guests lose access) and then
+/// every `every`.
+#[must_use = "dropping the handle detaches the task"]
+pub fn spawn_session_cleanup(
+    state: AppState,
+    every: std::time::Duration,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticks = tokio::time::interval(every);
+        ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticks.tick().await;
+            match auth::prune_sessions(&state).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!("{n} sessões expiradas ou revogadas apagadas"),
+                Err(e) => tracing::error!("falha ao limpar sessões: {e}"),
+            }
+        }
+    })
+}
+
 /// Onde ficam os arquivos estáticos: `static/` do crate e o `pkg/` gerado
 /// pelo `wasm-pack`.
 #[derive(Clone)]

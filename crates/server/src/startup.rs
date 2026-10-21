@@ -64,6 +64,7 @@ pub async fn serve(
 
     let pool = db::connect(&config.db_url).await?;
     let state = AppState::new(pool, config.auth);
+    let _cleanup = crate::spawn_session_cleanup(state.clone(), crate::SESSION_CLEANUP_EVERY);
     let (rooms, db) = (state.rooms.clone(), state.db.clone());
     let router = app(state, &config.assets);
 
