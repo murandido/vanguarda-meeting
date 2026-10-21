@@ -13,6 +13,9 @@ pub struct Config {
     pub addr: SocketAddr,
     pub assets: Assets,
     pub auth: AuthConfig,
+    /// E2E only (`DEV_TODAY`, requires `DEV_LOGIN`): pretend today is this
+    /// `YYYY-MM-DD` (Brasília time), so the Ritmo tests run on a known weekday.
+    pub dev_today: Option<String>,
 }
 
 impl Config {
@@ -42,11 +45,18 @@ impl Config {
             "DEV_LOGIN só é permitido com BIND em loopback (127.0.0.1)"
         );
 
+        let dev_today = var("DEV_TODAY");
+        anyhow::ensure!(
+            dev_today.is_none() || auth.dev_login,
+            "DEV_TODAY só é permitido junto com DEV_LOGIN"
+        );
+
         Ok(Self {
             db_url,
             addr,
             assets,
             auth,
+            dev_today,
         })
     }
 }
@@ -63,7 +73,12 @@ pub async fn serve(
     }
 
     let pool = db::connect(&config.db_url).await?;
-    let state = AppState::new(pool, config.auth);
+    let mut state = AppState::new(pool, config.auth);
+    if let Some(day) = &config.dev_today {
+        state.clock = crate::clock_on(day, -180, state.clock.now())
+            .ok_or_else(|| anyhow::anyhow!("DEV_TODAY inválido: {day}"))?;
+        tracing::warn!("DEV_TODAY ativo: o Ritmo acha que hoje é {day}");
+    }
     let (rooms, db) = (state.rooms.clone(), state.db.clone());
     let router = app(state, &config.assets);
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ritmo_week_closing_tasks\n               (week_id, login, task_id, project_id, title, size, promised, was_blocked, outcome,\n                carried_task_id)\n             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 10
+    },
+    "nullable": []
+  },
+  "hash": "aed79d5f50aebe7d182ef0af8740e3ef4fc98d680b8ad8e0c4bd2b12ac316bdb"
+}

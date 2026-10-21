@@ -5,8 +5,13 @@
 //! buscam de novo o parcial do quadro. Cada um só altera o que é seu, mas vê
 //! tudo da dupla.
 
+mod closing;
 pub mod date;
 mod db;
+pub mod streak;
+mod streak_board;
+
+pub use streak_board::{HomeCard, HomeStreak, home_card};
 
 use std::{
     collections::{HashMap, HashSet},
@@ -51,6 +56,11 @@ const CHECKIN: [(&str, &str); 3] = [
 const SIZES: [&str; 3] = ["P", "M", "G"];
 /// Evento HTMX que faz o quadro se recarregar.
 const CHANGED: &str = "ritmo-changed";
+/// Same as [`CHANGED`], plus the confetti on the page that made the change.
+const CHANGED_AND_CELEBRATE: &str = "ritmo-changed, ritmo-celebrate";
+/// Where the check-in sends the user back to; the fragment asks `ritmo.js`
+/// for a celebration (and is removed from the address bar right away).
+const AFTER_CHECKIN: &str = "/ritmo#celebrar";
 
 pub fn routes() -> Router<AppState> {
     let mutations = Router::new()
@@ -61,11 +71,18 @@ pub fn routes() -> Router<AppState> {
         .route("/ritmo/semana/confirmar", post(confirm_week))
         .route("/ritmo/checkin", post(save_checkin))
         .route("/ritmo/config", post(save_config))
+        .route("/ritmo/pausas", post(streak_board::create_pause))
+        .route(
+            "/ritmo/pausas/{id}/cancelar",
+            post(streak_board::cancel_pause),
+        )
+        .route("/ritmo/semana/fechar", post(closing::close))
         .route_layer(middleware::from_fn(require_htmx));
     Router::new()
         .route("/ritmo", get(page))
         .route("/ritmo/quadro", get(board_partial))
         .route("/ritmo/checkin", get(checkin_page))
+        .route("/ritmo/semana/fechar", get(closing::page))
         .route("/ritmo/events", get(events))
         .merge(mutations)
 }
@@ -137,11 +154,16 @@ async fn require_htmx(req: Request, next: Next) -> Response {
 /// Resposta das mutações: avisa todos por SSE e dispara a recarga do quadro
 /// na própria página.
 fn changed(state: &AppState) -> Response {
+    changed_with(state, CHANGED)
+}
+
+/// Like [`changed`], with a custom `HX-Trigger` value.
+fn changed_with(state: &AppState, trigger: &'static str) -> Response {
     state.ritmo.notify();
     (
         [(
             HeaderName::from_static("hx-trigger"),
-            HeaderValue::from_static(CHANGED),
+            HeaderValue::from_static(trigger),
         )],
         StatusCode::OK,
     )
@@ -304,6 +326,7 @@ struct TaskView {
     project_name: String,
     project_color: String,
     promised: bool,
+    carried: bool,
     prev: Option<(&'static str, &'static str)>,
     next: Option<(&'static str, &'static str)>,
 }
@@ -314,6 +337,16 @@ struct ColumnView {
     tasks: Vec<TaskView>,
 }
 
+/// A lane whose owner already closed the week.
+struct ClosedView {
+    when: String,
+    promised: i64,
+    promised_done: i64,
+    percent: Option<i64>,
+}
+
+// Template view: the flags become conditions in the HTML.
+#[allow(clippy::struct_excessive_bools)]
 struct LaneView {
     login: String,
     mine: bool,
@@ -322,6 +355,10 @@ struct LaneView {
     promised_total: usize,
     promised_done: usize,
     can_confirm: bool,
+    /// The week is still open and this person has not closed it.
+    editable: bool,
+    can_close: bool,
+    closed: Option<ClosedView>,
 }
 
 struct FeedItemView {
@@ -365,6 +402,12 @@ struct Quadro {
     show_feed: bool,
     checked_in: bool,
     feed: Vec<FeedView>,
+    /// Streak counters, shown on the current week only.
+    streaks: Option<streak_board::Streaks>,
+    /// The logged-in user can still add tasks to this week.
+    can_add: bool,
+    /// Start of an earlier week the logged-in user has not closed yet.
+    unclosed: Option<String>,
 }
 
 fn status_label(key: &str) -> (&'static str, &'static str) {
@@ -385,6 +428,7 @@ async fn build_lanes(
     projeto: Option<i64>,
 ) -> Result<Vec<LaneView>, Erro> {
     let tasks = db::tasks_of_week(&state.db, week.id).await?;
+    let closings = db::closings(&state.db, week.id).await?;
     let commitments = db::commitments(&state.db, week.id).await?;
     let promised = db::promised(&state.db, week.id).await?;
     let promised_ids: HashSet<i64> = promised.iter().filter_map(|p| p.task_id).collect();
@@ -401,6 +445,7 @@ async fn build_lanes(
         project_name: t.project_name.clone(),
         project_color: t.project_color.clone(),
         promised: promised_ids.contains(&t.id),
+        carried: t.carried_from.is_some(),
         prev: i.checked_sub(1).map(|j| COLUMNS[j]),
         next: COLUMNS.get(i + 1).copied(),
     };
@@ -427,12 +472,25 @@ async fn build_lanes(
                 .iter()
                 .find(|c| &c.login == login)
                 .map(|c| ctx.stamp(c.confirmed_at));
+            let closed = closings
+                .iter()
+                .find(|c| &c.login == login)
+                .map(|c| ClosedView {
+                    when: ctx.stamp(c.closed_at),
+                    promised: c.promised,
+                    promised_done: c.promised_done,
+                    percent: closing::percent(c.promised_done, c.promised),
+                });
+            let lane_editable = editable && closed.is_none();
             LaneView {
                 mine: login == me,
                 can_confirm: login == me
-                    && editable
+                    && lane_editable
                     && confirmed.is_none()
                     && tasks.iter().any(|t| t.owner == me),
+                editable: lane_editable,
+                can_close: login == me && closed.is_none() && closing::can_close(ctx, week),
+                closed,
                 confirmed,
                 promised_total: mine_promised.clone().count(),
                 promised_done: mine_promised
@@ -507,6 +565,17 @@ async fn build_quadro(
     } else {
         (Vec::new(), false)
     };
+    let streaks = if is_current {
+        Some(streak_board::load(state, ctx, me, &logins).await?)
+    } else {
+        None
+    };
+    let unclosed = if is_current {
+        closing::unclosed_before(state, week, me).await?
+    } else {
+        None
+    };
+    let can_add = lanes.iter().any(|l| l.mine && l.editable);
 
     let prev = db::week_before(&state.db, &semana)
         .await?
@@ -551,6 +620,9 @@ async fn build_quadro(
         show_feed: is_current,
         checked_in,
         feed,
+        streaks,
+        can_add,
+        unclosed,
     })
 }
 
@@ -575,6 +647,9 @@ struct Page {
     my_projects: Vec<ProjectOption>,
     days: Vec<DayOption>,
     meeting_label: &'static str,
+    pauses: Vec<streak_board::PauseView>,
+    /// First day a new pause can start (`YYYY-MM-DD`).
+    tomorrow: String,
 }
 
 #[derive(Template)]
@@ -614,12 +689,15 @@ async fn page(
             selected: d == ctx.meeting,
         })
         .collect();
+    let pauses = streak_board::pause_views(&state, &ctx, &user.login).await?;
     Ok(render(&Page {
         user: user.login,
         q,
         my_projects,
         days,
         meeting_label: ctx.meeting.label(),
+        pauses,
+        tomorrow: ctx.today.add_days(1).to_string(),
     }))
 }
 
@@ -674,11 +752,14 @@ async fn checkin_page(
         .await?
         .iter()
         .all(|c| c.login != user.login);
-    // Tarefas ativas, mais as que já estavam no check-in de hoje.
+    // Tarefas ativas, mais as que já estavam no check-in de hoje. Once the
+    // week is closed its tasks are frozen, but the check-in itself (which
+    // keeps the streak) is still possible.
+    let closed = closing::closed_by(&state, ctx.current.id, &user.login).await?;
     let items = db::tasks_of_week(&state.db, ctx.current.id)
         .await?
         .into_iter()
-        .filter(|t| t.owner == user.login)
+        .filter(|t| t.owner == user.login && !closed)
         .filter(|t| t.status != "done" || previous.contains_key(&t.id))
         .map(|t| {
             let before = previous.get(&t.id);
@@ -764,9 +845,7 @@ async fn create_task(
 ) -> Resultado {
     let ctx = context(&state).await?;
     let week = resolve_week(&state, &ctx, Some(&form.semana)).await?;
-    if !ctx.editable(&week) {
-        return Err(Erro::Proibido("Essa semana já terminou."));
-    }
+    writable(&state, &ctx, &week, &user.login).await?;
     let project = db::project(&state.db, form.projeto)
         .await?
         .ok_or(Erro::Invalido("Projeto não existe."))?;
@@ -805,10 +884,20 @@ async fn own_task(
     }
     let week =
         to_week(db::week_by_id(&state.db, task.week_id).await?)?.ok_or(Erro::NaoEncontrado)?;
-    if !ctx.editable(&week) {
+    writable(state, ctx, &week, &user.login).await?;
+    Ok(task)
+}
+
+/// `login` can still change their side of `week`: it has not ended and they
+/// have not closed it.
+async fn writable(state: &AppState, ctx: &Ctx, week: &Week, login: &str) -> Result<(), Erro> {
+    if !ctx.editable(week) {
         return Err(Erro::Proibido("Essa semana já terminou."));
     }
-    Ok(task)
+    if closing::closed_by(state, week.id, login).await? {
+        return Err(Erro::Proibido("Você já fechou essa semana."));
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -825,10 +914,15 @@ async fn move_task(
     let ctx = context(&state).await?;
     let task = own_task(&state, &ctx, &user, id).await?;
     let status = column(&form.para).ok_or(Erro::Invalido("Coluna inválida."))?;
-    if task.status != status {
-        db::set_task_status(&state.db, id, status, ctx.now).await?;
+    if task.status == status {
+        return Ok(changed(&state));
     }
-    Ok(changed(&state))
+    db::set_task_status(&state.db, id, status, ctx.now).await?;
+    if status == "done" {
+        Ok(changed_with(&state, CHANGED_AND_CELEBRATE))
+    } else {
+        Ok(changed(&state))
+    }
 }
 
 async fn delete_task(
@@ -854,9 +948,7 @@ async fn confirm_week(
 ) -> Resultado {
     let ctx = context(&state).await?;
     let week = resolve_week(&state, &ctx, Some(&form.semana)).await?;
-    if !ctx.editable(&week) {
-        return Err(Erro::Proibido("Essa semana já terminou."));
-    }
+    writable(&state, &ctx, &week, &user.login).await?;
     let has_tasks = db::tasks_of_week(&state.db, week.id)
         .await?
         .iter()
@@ -877,10 +969,11 @@ async fn save_checkin(
     Form(form): Form<Vec<(String, String)>>,
 ) -> Resultado {
     let ctx = context(&state).await?;
+    let closed = closing::closed_by(&state, ctx.current.id, &user.login).await?;
     let mine: HashSet<i64> = db::tasks_of_week(&state.db, ctx.current.id)
         .await?
         .into_iter()
-        .filter(|t| t.owner == user.login)
+        .filter(|t| t.owner == user.login && !closed)
         .map(|t| t.id)
         .collect();
     let task_id = |raw: &str| -> Result<i64, Erro> {
@@ -932,7 +1025,7 @@ async fn save_checkin(
     Ok((
         [(
             HeaderName::from_static("hx-redirect"),
-            HeaderValue::from_static("/ritmo"),
+            HeaderValue::from_static(AFTER_CHECKIN),
         )],
         StatusCode::OK,
     )

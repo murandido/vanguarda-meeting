@@ -33,7 +33,11 @@ export default defineConfig({
       BIND: "127.0.0.1:3000",
       // Login de desenvolvimento: os testes entram por /auth/dev/{login}.
       DEV_LOGIN: "1",
-      ALLOWED_GITHUB_USERS: "ana,bia",
+      // caio and dani have Ritmo weeks of their own (closing makes a week
+      // read-only, so they must not share it with the other tests).
+      ALLOWED_GITHUB_USERS: "ana,bia,caio,dani",
+      // A Tuesday (the default meeting day): the week can be closed today.
+      DEV_TODAY: "2026-10-20",
     },
     url: "http://127.0.0.1:3000/health",
     reuseExistingServer: !process.env.CI,

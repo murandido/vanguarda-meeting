@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ritmo_streak_events (login, day, kind, created_at) VALUES (?, ?, ?, ?)\n             ON CONFLICT (login, day, kind) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "b26cccaee1fe2c2e046ad4df45832622e0c532a0f2fc01bf95719d0be8719f42"
+}

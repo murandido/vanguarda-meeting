@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT login, closed_at, promised, promised_done, extras_done, carried, dropped\n         FROM ritmo_week_closings WHERE week_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "login",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closings",
+            "name": "login"
+          }
+        }
+      },
+      {
+        "name": "closed_at",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closings",
+            "name": "closed_at"
+          }
+        }
+      },
+      {
+        "name": "promised",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closings",
+            "name": "promised"
+          }
+        }
+      },
+      {
+        "name": "promised_done",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closings",
+            "name": "promised_done"
+          }
+        }
+      },
+      {
+        "name": "extras_done",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closings",
+            "name": "extras_done"
+          }
+        }
+      },
+      {
+        "name": "carried",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closings",
+            "name": "carried"
+          }
+        }
+      },
+      {
+        "name": "dropped",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "ritmo_week_closings",
+            "name": "dropped"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "096150e6af6ad092e637ae026bd2c6cefe23d618be84902e7edd494d1271f8d8"
+}
