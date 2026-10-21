@@ -9,8 +9,9 @@
 // - hover a shape: four anchor dots (N/E/S/W); drag from a dot to another
 //   shape (or to empty space) creates an arrow;
 // - arrow tool ("Seta" button or A): drag from any shape to another;
-// - click an arrow selects it; Delete/Backspace removes it; R switches
-//   between curved and straight; Esc cancels/deselects.
+// - click an arrow selects it through board.js's own selection, so Delete
+//   (board.removeShape) removes it like any shape; R switches between curved
+//   and straight; Esc cancels the tool or a drag in progress.
 
 /** Saturated colors so the arrows are easy to tell apart (and to probe in E2E). */
 export const ARROW_COLOR = "#3b5bdb";
@@ -29,16 +30,18 @@ const HEAD_WIDTH = 9; // world units
  * @param {HTMLCanvasElement} deps.canvas
  * @param {import("/pkg/canvas.js").Board} deps.board
  * @param {import("/pkg/canvas.js").Camera} deps.camera
- * @param {() => void} deps.commit  send local changes and redraw
+ * @param {() => void} deps.edited  send local changes and redraw
  * @param {() => void} deps.changed redraw only
+ * @param {(id: string | null) => void} deps.select board.js selection
+ * @param {() => string | null} deps.selected current selection
+ * @param {() => string} deps.newId id generator (sortable by creation time)
  */
-export function createConnectors({ canvas, board, camera, commit, changed }) {
+export function createConnectors({ canvas, board, camera, edited, changed, select, selected, newId }) {
   const stride = board.constructor.connectorStride();
   const toolButton = document.getElementById("tool-arrow");
 
   let tool = false; // arrow tool active
   let hovered = null; // shape id showing anchor dots
-  let selected = null; // selected connector id
   let drag = null; // { from, side, sx, sy, x, y, target: {shape, side} | null }
 
   function setTool(on) {
@@ -51,14 +54,11 @@ export function createConnectors({ canvas, board, camera, commit, changed }) {
     setTool(!tool);
   });
 
-  function select(id) {
-    if (selected !== id) {
-      selected = id;
-      changed();
-    }
-  }
+  /** Whether `id` is a connector that is currently drawn. */
+  const has = (id) => board.connectorGeometry(id).length > 0;
 
   const world = (e) => [camera.toWorldX(e.offsetX), camera.toWorldY(e.offsetY)];
+  const shapeAt = (x, y) => board.hitTest(x, y) ?? null;
 
   /** Anchor dot under the world point, as `{ shape, side }`. */
   function anchorAt(x, y) {
@@ -67,14 +67,6 @@ export function createConnectors({ canvas, board, camera, commit, changed }) {
     const out = { shape: a.shape, side: a.side };
     a.free();
     return out;
-  }
-
-  function shapeAt(x, y) {
-    const hit = board.hitTest(x, y);
-    if (!hit) return null;
-    const id = hit.id;
-    hit.free();
-    return id;
   }
 
   /** Where a drag in progress would end: a shape (side or auto) or nothing. */
@@ -89,12 +81,11 @@ export function createConnectors({ canvas, board, camera, commit, changed }) {
     const [x, y] = world(e);
     drag = { from, side, sx: e.offsetX, sy: e.offsetY, x, y, target: null };
     select(null);
-    changed();
   }
 
   // ---- hooks called by board.js ------------------------------------------
 
-  /** Primary button down (no pan modifier). True if this module took it. */
+  /** Primary button down (no pan, stamp or handle). True if this module took it. */
   function pointerDown(e) {
     const [x, y] = world(e);
     if (tool) {
@@ -109,11 +100,12 @@ export function createConnectors({ canvas, board, camera, commit, changed }) {
       return true;
     }
     const hit = board.hitConnector(camera, x, y, ARROW_HIT_PX);
-    select(hit ?? null);
-    return hit !== undefined;
+    if (hit === undefined) return false;
+    select(hit);
+    return true;
   }
 
-  /** Pointer moved. True while dragging an arrow (board.js skips its own drag). */
+  /** Pointer moved. True while dragging an arrow (board.js skips its own gestures). */
   function pointerMove(e, busy) {
     const [x, y] = world(e);
     if (drag) {
@@ -144,38 +136,31 @@ export function createConnectors({ canvas, board, camera, commit, changed }) {
     const moved = Math.hypot(e.offsetX - d.sx, e.offsetY - d.sy) >= MIN_DRAG_PX;
     // Released on the source shape itself: nothing to connect.
     if (!moved || (!d.target && shapeAt(d.x, d.y) === d.from)) return;
-    const id = crypto.randomUUID();
+    const id = newId();
     const t = d.target;
     board.addConnector(id, d.from, d.side, t?.shape, t?.side ?? "auto", d.x, d.y);
-    select(id);
     setTool(false);
-    commit();
+    edited();
+    select(id);
   }
 
   /** Key pressed outside text fields. True if handled. */
   function keyDown(e) {
-    if (e.ctrlKey || e.metaKey || e.altKey) return false;
-    if (e.code === "KeyA" && !e.shiftKey) {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return false;
+    if (e.code === "KeyA") {
       setTool(!tool);
       return true;
     }
-    if (e.code === "Escape" && (tool || drag || selected)) {
+    if (e.code === "Escape" && (tool || drag)) {
       setTool(false);
       drag = null;
-      select(null);
       changed();
       return true;
     }
-    if (!selected) return false;
-    if (e.code === "Delete" || e.code === "Backspace") {
-      board.removeConnector(selected);
-      select(null);
-      commit();
-      return true;
-    }
-    if (e.code === "KeyR" && !e.shiftKey) {
-      board.toggleConnectorRoute(selected);
-      commit();
+    const id = selected();
+    if (e.code === "KeyR" && id && has(id)) {
+      board.toggleConnectorRoute(id);
+      edited();
       return true;
     }
     return false;
@@ -222,18 +207,14 @@ export function createConnectors({ canvas, board, camera, commit, changed }) {
   }
 
   /**
-   * Draws arrows, selection and drag preview. Called with the world
-   * transform set; `w`/`h` are the canvas size in CSS pixels.
+   * Draws arrows, the selected one, the drag preview and anchor dots. Called
+   * with the world transform set; `w`/`h` are the canvas size in CSS pixels.
    */
   function draw(ctx, w, h, zoom) {
     const width = Math.max(LINE_WIDTH, 1 / zoom);
     drawAll(ctx, board.visibleConnectors(camera, w, h), ARROW_COLOR, width);
-    if (selected) {
-      const g = board.connectorGeometry(selected);
-      // The selected arrow was deleted (here or remotely): forget it.
-      if (g.length === 0) selected = null;
-      else drawAll(ctx, g, SELECTED_COLOR, width * 1.75);
-    }
+    const id = selected();
+    if (id) drawAll(ctx, board.connectorGeometry(id), SELECTED_COLOR, width * 1.75);
     if (drag) {
       const t = drag.target;
       const g = board.previewConnector(drag.from, drag.side, t?.shape, t?.side ?? "auto", drag.x, drag.y);
@@ -244,7 +225,7 @@ export function createConnectors({ canvas, board, camera, commit, changed }) {
     const dots = [];
     if (hovered) dots.push(hovered);
     if (drag && drag.from !== hovered) dots.push(drag.from);
-    for (const id of dots) drawAnchors(ctx, board.anchorPoints(id), zoom);
+    for (const shape of dots) drawAnchors(ctx, board.anchorPoints(shape), zoom);
   }
 
   function drawAnchors(ctx, pts, zoom) {
@@ -262,5 +243,5 @@ export function createConnectors({ canvas, board, camera, commit, changed }) {
     ctx.stroke();
   }
 
-  return { pointerDown, pointerMove, pointerUp, keyDown, draw };
+  return { has, pointerDown, pointerMove, pointerUp, keyDown, draw };
 }

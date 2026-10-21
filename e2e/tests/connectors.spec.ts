@@ -12,6 +12,13 @@ import { abrirNovoQuadro, doisUsuarios, esperaPostit, pixelsColoridos, quadroUni
 const esperaSeta = (page: Page, x: number, y: number) =>
   expect.poll(async () => (await pixelsColoridos(page, x - 3, y - 3, 6, 6)) > 0, { timeout: 5_000 });
 
+/** Creates a post-it centered on (x, y) and closes its text editor. */
+async function criaPostit(page: Page, x: number, y: number) {
+  await page.mouse.dblclick(x, y);
+  await expect(page.locator("#postit-editor")).toBeFocused();
+  await page.keyboard.press("Escape");
+}
+
 /** Drags with the left button from one screen point to another. */
 async function arrasta(page: Page, from: [number, number], to: [number, number]) {
   await page.mouse.move(...from);
@@ -24,8 +31,8 @@ test("arrow between two shapes syncs, follows moves and can be deleted", async (
   const { a, b, fechar } = await doisUsuarios(browser, quadroUnico("setas"));
   try {
     // S1: x 240..360, y 260..340. S2: x 640..760, y 260..340.
-    await a.mouse.dblclick(300, 300);
-    await a.mouse.dblclick(700, 300);
+    await criaPostit(a, 300, 300);
+    await criaPostit(a, 700, 300);
     await esperaPostit(b, 340, 275).toBe(true);
     await esperaPostit(b, 740, 275).toBe(true);
     await esperaSeta(b, 500, 300).toBe(false);
@@ -85,7 +92,7 @@ test("arrow tool connects a shape to a free point", async ({ page }) => {
   const ferramenta = page.locator("#tool-arrow");
 
   // S1: x 240..360, y 260..340.
-  await page.mouse.dblclick(300, 300);
+  await criaPostit(page, 300, 300);
   await esperaPostit(page, 340, 275).toBe(true);
 
   // A turns the tool on; dragging from the middle of the shape does not move
@@ -105,4 +112,10 @@ test("arrow tool connects a shape to a free point", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(ferramenta).toHaveAttribute("aria-pressed", "false");
   await esperaSeta(page, 500, 300).toBe(false);
+
+  // Deleting the shape deletes the arrows attached to it.
+  await page.mouse.click(300, 300);
+  await page.keyboard.press("Delete");
+  await esperaPostit(page, 340, 275).toBe(false);
+  await esperaSeta(page, 300, 470).toBe(false);
 });

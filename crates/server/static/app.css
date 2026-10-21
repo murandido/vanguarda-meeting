@@ -116,6 +116,8 @@ body { margin: 0; }
 /* Cartazes: sticker tray, post-it color toolbar and inline text editor. */
 .tool { font: inherit; padding: .1rem .5rem; border: 1px solid GrayText; border-radius: 4px;
   background: none; color: inherit; cursor: pointer; }
+.tool[aria-pressed="true"] { background: #3b5bdb; border-color: #3b5bdb; color: white; }
+#board.tool-arrow { cursor: crosshair; }
 .tool[aria-expanded="true"] { background: color-mix(in srgb, Highlight 25%, transparent); }
 .tray-wrap { position: relative; }
 .tray { position: absolute; top: calc(100% + .4rem); left: 0; display: grid;

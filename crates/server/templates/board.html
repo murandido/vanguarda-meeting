@@ -6,11 +6,12 @@
   <span>Cartazes / <strong>{{ title }}</strong></span>
   <span id="status" data-state="connecting">conectando…</span>
   <button id="zoom" type="button" title="Zoom — clique ou Shift+0 volta a 100%, Shift+1 enquadra tudo">100%</button>
+  <button id="tool-arrow" class="tool" type="button" aria-pressed="false" title="Seta (A) — arraste de uma forma até outra">↗ Seta</button>
   <div class="tray-wrap">
     <button id="stickers" class="tool" type="button" aria-expanded="false" aria-controls="sticker-tray" title="Figurinhas — escolha uma e clique no quadro">😀 Figurinhas</button>
     <div id="sticker-tray" class="tray" role="toolbar" aria-label="Figurinhas" hidden></div>
   </div>
-  <span class="hint">duplo clique ou N cria post-it · duplo clique edita · Delete apaga · [ ] gira figurinha · espaço+arraste ou rolagem navega · Ctrl+roda: zoom</span>
+  <span class="hint">duplo clique ou N cria post-it · duplo clique edita · arraste um ponto da borda ou A liga com seta · R curva/reta · Delete apaga · [ ] gira figurinha · espaço+arraste ou rolagem navega · Ctrl+roda: zoom</span>
   {% include "_user.html" %}
 </header>
 <canvas id="board" data-board="{{ board }}" data-user="{{ user }}"></canvas>
