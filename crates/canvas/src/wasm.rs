@@ -5,6 +5,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::{Board, BoardError, Camera, Color, STICKERS, shape};
 
+mod connectors;
+
 /// Margem, em pixels de tela, ao enquadrar o conteúdo (`Shift+1`).
 const FIT_MARGIN: f64 = 48.0;
 

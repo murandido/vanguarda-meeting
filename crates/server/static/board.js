@@ -4,6 +4,7 @@
 // "world" = board coordinates, the same for everyone. The camera (pan/zoom)
 // is local to each participant.
 import init, { Board, Camera, colorNames, shapeLimits, stickerPalette } from "/pkg/canvas.js";
+import { createConnectors } from "/static/connectors.js";
 
 await init();
 
@@ -146,7 +147,7 @@ function sendCursor(sx, sy) {
 
 /** After a remote update: drop a selection that was deleted, sync the editor. */
 function remoteEdit() {
-  if (selected && !board.shapeRecord(selected)) select(null);
+  if (selected && !board.shapeRecord(selected) && !connectors.has(selected)) select(null);
   if (editing) syncEditorFromBoard();
 }
 
@@ -244,6 +245,18 @@ function cachedLayout(index, version, w, h) {
 
 let selected = null; // shape id
 let editing = null; // post-it id whose text is in the editor
+
+// Arrows between shapes (CA-03); they share `selected` and Delete.
+const connectors = createConnectors({
+  canvas,
+  board,
+  camera,
+  edited: () => edited(),
+  changed: () => changed(),
+  select: (id) => select(id),
+  selected: () => selected,
+  newId,
+});
 
 function select(id) {
   if (editing && editing !== id) stopEditing();
@@ -436,6 +449,8 @@ canvas.addEventListener("pointerdown", (e) => {
       if (handle.name === "resize") gesture = { kind: "resize", id: selected, x, y };
       else if (handle.name === "scale") gesture = { kind: "scale", id: selected, x, y, rotation: b };
       else gesture = { kind: "rotate", id: selected, x, y, scale: a };
+    } else if (connectors.pointerDown(e)) {
+      gesture = { kind: "connector" };
     } else {
       const id = board.hitTest(wx, wy);
       if (editing && id === editing) return;
@@ -463,6 +478,7 @@ canvas.addEventListener("pointermove", (e) => {
     return;
   }
   sendCursor(e.offsetX, e.offsetY);
+  if (connectors.pointerMove(e, gesture !== null)) return;
   const wx = camera.toWorldX(e.offsetX);
   const wy = camera.toWorldY(e.offsetY);
   switch (gesture?.kind) {
@@ -495,7 +511,8 @@ canvas.addEventListener("pointermove", (e) => {
   edited();
 });
 
-function endGesture() {
+function endGesture(e) {
+  if (gesture?.kind === "connector") connectors.pointerUp(e);
   gesture = null;
   updateCursorStyle();
   changed();
@@ -565,6 +582,10 @@ addEventListener("keydown", (e) => {
       spaceHeld = true;
       updateCursorStyle();
     }
+    return;
+  }
+  if (connectors.keyDown(e)) {
+    e.preventDefault();
     return;
   }
   const mod = e.ctrlKey || e.metaKey;
@@ -769,7 +790,7 @@ function frame(now) {
     const camX = camera.x;
     const camY = camera.y;
     const sel = selected ? board.shapeRecord(selected) : undefined;
-    if (selected && !sel) select(null);
+    if (selected && !sel && !connectors.has(selected)) select(null);
 
     // Background and grid in screen pixels.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -780,6 +801,7 @@ function frame(now) {
     const s = dpr * zoom;
     ctx.setTransform(s, 0, 0, s, -camX * s, -camY * s);
     drawShapes(board.visibleShapes(camera, w, h), zoom, editing && sel ? sel[0] : -1);
+    connectors.draw(ctx, w, h, zoom);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (sel) drawSelection(sel, zoom, camX, camY);

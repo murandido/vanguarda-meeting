@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use loro::{ExportMode, Frontiers, LoroDoc, LoroMap, LoroValue, VersionVector};
 
 pub mod camera;
+pub mod connectors;
 pub mod shape;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
@@ -62,6 +63,8 @@ pub struct Board {
     /// frontiers stay the same. Re-reading the whole document every frame
     /// would be costly with thousands of shapes; comparing frontiers is cheap.
     cache: RefCell<Option<(Frontiers, Vec<Shape>)>>,
+    /// Connectors and their routed geometry (see [`connectors`]).
+    connector_cache: connectors::Cache,
 }
 
 impl Default for Board {
@@ -79,6 +82,7 @@ impl Board {
             doc,
             sent,
             cache: RefCell::new(None),
+            connector_cache: connectors::Cache::default(),
         }
     }
 
@@ -277,7 +281,12 @@ impl Board {
         Ok(())
     }
 
+    /// Removes a shape together with the connectors attached to it, in one
+    /// commit: an arrow pointing at nothing carries no meaning.
     pub fn remove_shape(&self, id: &str) {
+        for connector in self.connectors_attached_to(id) {
+            self.shape_map().delete(&connector).expect("valid map key");
+        }
         self.shape_map().delete(id).expect("valid map key");
         self.doc.commit();
     }
