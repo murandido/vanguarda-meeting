@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT login, day FROM ritmo_checkins ORDER BY day",
+  "describe": {
+    "columns": [
+      {
+        "name": "login",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkins",
+            "name": "login"
+          }
+        }
+      },
+      {
+        "name": "day",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ritmo_checkins",
+            "name": "day"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "608403573c8eec2025656d861e39e1e67248082fa3e06feba80f79cd59adaef1"
+}

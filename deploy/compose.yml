@@ -1,11 +1,14 @@
 # Stack de produção do Vanguarda na VPS. Fica em /opt/vanguarda junto com o
 # .env (segredos, permissão 600) e é atualizado pelo deploy/deploy.sh.
+#
+# Compose also reads /opt/vanguarda/.env for interpolation: PROXY_NETWORK
+# names the existing Docker network shared with the Caddy reverse proxy.
 name: vanguarda
 
 services:
   app:
     image: ghcr.io/murandido/vanguarda-meeting:${IMAGE_TAG:?defina IMAGE_TAG}
-    # O Caddy do m80 alcança o app por este nome, na rede backend_default.
+    # The reverse proxy reaches the app by this name on the proxy network.
     container_name: vanguarda-meeting
     env_file: .env
     environment:
@@ -20,7 +23,7 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     pids_limit: 256
-    networks: [backend_default]
+    networks: [proxy]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "/app/server", "--healthcheck"]
@@ -34,5 +37,6 @@ services:
       options: { max-size: 10m, max-file: "3" }
 
 networks:
-  backend_default:
+  proxy:
+    name: ${PROXY_NETWORK:?set PROXY_NETWORK in /opt/vanguarda/.env}
     external: true

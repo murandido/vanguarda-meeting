@@ -1,6 +1,8 @@
 //! Utilitários compartilhados pelos testes de integração do servidor.
 #![allow(dead_code)]
 
+pub mod ritmo;
+
 use axum::{
     Router,
     body::Body,

@@ -1,6 +1,7 @@
-# Site do Vanguarda no Caddy do m80 (importado de /etc/caddy/sites/*.caddy).
-# Copiado para /opt/caddy-sites/ pelo deploy/deploy.sh.
-vanguarda-meeting.emioitenta.com.br {
+# Vanguarda site for the shared Caddy reverse proxy.
+# deploy/deploy.sh renders this template (filling in the SITE_DOMAIN placeholder)
+# into $SITES_DIR/vanguarda-meeting.caddy; the proxy's Caddyfile imports that directory.
+${SITE_DOMAIN} {
 	encode gzip
 
 	header {

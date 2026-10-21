@@ -5,7 +5,7 @@
 // ~40px no topo, então as sondas ficam abaixo disso. Cada post-it criado por
 // duplo clique mede 120x80 e fica centrado no ponto clicado.
 import { expect, test, type Page } from "@playwright/test";
-import { abrirNovoQuadro, doisUsuarios, esperaPostit, pixelsColoridos, quadroUnico, zoom } from "./canvas";
+import { abrirNovoQuadro, criarPostit, doisUsuarios, esperaPostit, pixelsColoridos, quadroUnico, zoom } from "./canvas";
 
 /** Ctrl + roda `vezes` vezes no ponto (x, y): negativo aproxima. */
 async function ctrlRoda(page: Page, x: number, y: number, deltaY: number, vezes: number) {
@@ -25,8 +25,8 @@ test("pan muda o que está sob um ponto fixo da tela", async ({ page }) => {
   await abrirNovoQuadro(page, quadroUnico("pan"));
 
   // P1 ocupa x 340..460, y 260..340; P2 ocupa x 740..860, y 260..340.
-  await page.mouse.dblclick(400, 300);
-  await page.mouse.dblclick(800, 300);
+  await criarPostit(page, 400, 300);
+  await criarPostit(page, 800, 300);
   await esperaPostit(page, 440, 275).toBe(true);
   await esperaPostit(page, 840, 275).toBe(true);
 
@@ -71,7 +71,7 @@ test("zoom mantém o post-it sob o ponteiro e respeita os atalhos", async ({ pag
   await expect(zoom(page)).toHaveText("100%");
 
   // Post-it em x 340..460, y 260..340; ponteiro fora do centro dele.
-  await page.mouse.dblclick(400, 300);
+  await criarPostit(page, 400, 300);
   await esperaPostit(page, 420, 310).toBe(true);
   await esperaPostit(page, 500, 370).toBe(false);
 
@@ -122,7 +122,7 @@ test("dois usuários com câmeras diferentes veem o post-it no mesmo ponto do mu
     await rola(b, 640, 500, 200, 100);
 
     // A cria em tela (400, 300) = mundo (900, 600): x 840..960, y 560..640.
-    await a.mouse.dblclick(400, 300);
+    await criarPostit(a, 400, 300);
     await esperaPostit(a, 440, 275).toBe(true);
 
     // Em B o mesmo post-it aparece em tela x 640..760, y 460..540.
@@ -156,12 +156,16 @@ test("1.000 post-its: enquadrar e navegar mantém a fluidez", async ({ page }) =
 
   // Gera 1.000 post-its (grade 50x20, passo 160x120) com o próprio módulo
   // WASM e envia por um segundo WebSocket da mesma sessão, como faria outro
-  // participante — sem ganchos de teste no código de produção.
+  // participante — sem ganchos de teste no código de produção. Each post-it
+  // gets a short text, so the frame also wraps and draws text (CA-02).
   await page.evaluate(async (id) => {
     const caminho = "/pkg/canvas.js";
     const { Board } = await import(caminho);
     const outro = new Board();
-    for (let i = 0; i < 1000; i++) outro.addRect(`mil-${i}`, (i % 50) * 160, Math.floor(i / 50) * 120, 120, 80);
+    for (let i = 0; i < 1000; i++) {
+      outro.addPostit(`mil-${i}`, (i % 50) * 160, Math.floor(i / 50) * 120, 120, 80, "yellow");
+      outro.setText(`mil-${i}`, `Ideia ${i}: revisar a pauta`);
+    }
     const update: Uint8Array<ArrayBuffer> = outro.takePendingUpdate();
     const ws = new WebSocket(`ws://${location.host}/ws/${id}`);
     ws.binaryType = "arraybuffer";
@@ -172,8 +176,9 @@ test("1.000 post-its: enquadrar e navegar mantém a fluidez", async ({ page }) =
     ws.close();
   }, quadro);
 
-  // Post-it 52 = coluna 2, linha 1: x 320..440, y 120..200 em 100%.
-  await esperaPostit(page, 380, 160).toBe(true);
+  // Post-it 52 = coluna 2, linha 1: x 320..440, y 120..200 em 100% (probe in
+  // the bottom-right padding, clear of the text).
+  await esperaPostit(page, 436, 196).toBe(true);
 
   // Shift+1: tudo (7960x2360) cabe na tela com zoom ~15%, centrado em
   // (3980, 1180). O post-it da coluna 24, linha 9 fica em x ~619..637, y ~385..397.

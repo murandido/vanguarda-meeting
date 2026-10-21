@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM ritmo_pauses WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "5be1c1f44616b33ef5cf346cd9c0df9fafbb6b52fb626c20f77ef51a5275e9bf"
+}

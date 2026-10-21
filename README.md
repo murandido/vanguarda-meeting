@@ -1,135 +1,224 @@
 # Vanguarda
 
-Dashboard da dupla para a reunião semanal de alinhamento:
+[![CI](https://github.com/murandido/vanguarda-meeting/actions/workflows/ci.yml/badge.svg)](https://github.com/murandido/vanguarda-meeting/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-- **Cartazes** — quadro infinito colaborativo estilo FigJam (Rust → WASM + Loro).
-- **Ritmo** — Kanban semanal com check-in diário (HTMX renderizado no servidor).
+A small, self-hosted dashboard for two friends' weekly alignment meeting.
+It has two parts:
 
-Requisitos, decisões e roadmap: [documento de requisitos](https://claude.ai/code/artifact/3e365f49-9a74-4fd3-9694-bfc144baf029).
+- **Cartazes**: a collaborative infinite whiteboard in the style of FigJam,
+  where both people edit the same board in real time.
+- **Ritmo**: a weekly Kanban board. Each person commits to a set of tasks at
+  the meeting, checks in daily from their phone, and sees the partner's progress
+  live.
 
-## Estrutura
+There are exactly two users, so the project optimizes for low running cost,
+simple operations and a fast, pleasant UI rather than scale. The UI is in
+Portuguese; code and documentation are in English.
 
-| Caminho | O que é |
-| --- | --- |
-| `crates/shared` | Tipos do protocolo (presença, validação de nomes) |
-| `crates/canvas` | Motor do Cartazes: estado em Loro; ponte JS em `src/wasm.rs` |
-| `crates/server` | Axum: páginas HTMX/Askama, relay WebSocket `/ws/{quadro}`, SQLite |
-| `e2e/` | Playwright: dois navegadores no mesmo quadro |
-| `.sqlx/` | Metadados offline das queries (`cargo sqlx prepare --workspace`) |
+## Features
 
-## Rodando localmente
-
-Pré-requisitos: Rust estável com `rustfmt`, `clippy` e o target `wasm32-unknown-unknown`;
-`wasm-pack`; `sqlx-cli`; Node 22 (para o E2E); `lefthook`.
-
-```sh
-lefthook install                                   # hooks de pre-commit
-wasm-pack build crates/canvas --target web --release
-cargo run -p server                                # http://127.0.0.1:3000
-```
-
-Para desenvolver sem configurar o GitHub:
-
-```sh
-DEV_LOGIN=1 ALLOWED_GITHUB_USERS=ana,bia cargo run -p server
-```
-
-Abra `/login`, entre como `ana` numa janela e `bia` numa janela anônima, crie
-um quadro em **Cartazes → Novo quadro** e abra-o nas duas: duplo clique cria um
-retângulo, arrastar move, e a outra janela acompanha. Só abrem quadros criados
-pela home (`/b/{id}` desconhecido dá 404; arquivado, 410). Use
-`http://127.0.0.1:3000` (e não `localhost`): o WebSocket só aceita `Origin`
-igual a `PUBLIC_URL`.
-
-O quadro é infinito (CA-01), com câmera local de cada um: espaço + arraste,
-botão do meio ou rolagem com dois dedos movem a vista; Ctrl/Cmd + roda ou pinça
-dão zoom (10%–400%) em torno do ponteiro; `Shift+0`/`Ctrl+0` voltam a 100% e
-`Shift+1` enquadra todo o conteúdo. Benchmark do recorte por viewport:
-`cargo bench -p canvas`.
-
-O Ritmo fica em `/ritmo`: crie um projeto em "Projetos e configurações", adicione
-tarefas, confirme a semana e faça o check-in do dia em `/ritmo/checkin`. A outra
-janela atualiza sozinha (SSE em `/ritmo/events`). A semana vira no fim do dia da
-reunião (padrão: terça, horário de Brasília), configurável na própria página.
-
-### Variáveis do servidor
-
-| Variável | Padrão | Para quê |
+| Area | Feature | Status |
 | --- | --- | --- |
-| `ALLOWED_GITHUB_USERS` | — (obrigatória) | Logins do GitHub convidados, separados por vírgula; `login:id` exige também o id numérico da conta. Sem id, o primeiro login vincula a conta (um id diferente depois é recusado) |
-| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | — | OAuth App do GitHub; obrigatórias sem `DEV_LOGIN` |
-| `PUBLIC_URL` | `http://127.0.0.1:3000` | Base do callback (`{PUBLIC_URL}/auth/github/callback`) e única `Origin` aceita em POST e no WebSocket (outra leva 403) |
-| `COOKIE_SECURE` | `true` se `PUBLIC_URL` for https | Cookies só por HTTPS, com prefixo `__Host-` |
-| `DEV_LOGIN` | desligado | Libera `/auth/dev/{login}`; só aceito com `BIND` em loopback |
-| `DATABASE_URL` | `sqlite://vanguarda.db` | Banco SQLite |
-| `BIND` | `127.0.0.1:3000` | Endereço do servidor |
-| `STATIC_DIR`, `PKG_DIR` | pastas do repo | Estáticos e saída do `wasm-pack` |
+| Cartazes | Real-time board sync between browsers (Loro CRDT over WebSocket) | ✅ Shipped |
+| Cartazes | Live cursors of the other participant (presence channel) | ✅ Shipped |
+| Cartazes | Board persistence in SQLite, restored on reconnect | ✅ Shipped |
+| Cartazes | Infinite canvas: pan, zoom, viewport culling, 60 fps with 1,000 objects | ✅ Shipped |
+| Cartazes | Multiple boards (create, rename, archive) and a hardened WebSocket (Origin check, size limits, validated imports, batched saves, keep-alive) | ✅ Shipped |
+| Cartazes | Sticky notes with text, colors and resizing; stickers you can move, scale and rotate | ✅ Shipped |
+| Cartazes | Per-user undo and redo | 🚧 In progress ([#21](https://github.com/murandido/vanguarda-meeting/pull/21)) |
+| Cartazes | Arrows and connectors | 🚧 In progress |
+| Ritmo | Weekly board per person with To do / Doing / Done columns and personal projects | ✅ Shipped |
+| Ritmo | Weekly commitment ("prometido") frozen at the meeting, with done/total score | ✅ Shipped |
+| Ritmo | Mobile daily check-in and a shared "today" feed | ✅ Shipped |
+| Ritmo | Live updates through Server-Sent Events | ✅ Shipped |
+| Ritmo | Streaks with freezes and planned pauses, week closing (carry over or drop) and celebrations | ✅ Shipped |
+| Platform | Invite-only login with GitHub OAuth | ✅ Shipped |
+| Platform | Continuous deployment to an ARM VPS with health check and automatic rollback | ✅ Shipped |
+| Platform | Daily SQLite backups with a tested restore procedure | ✅ Shipped |
+| Platform | Security hardening: CSP and security headers, `__Host-` cookies, Origin checks on writes, account binding, session revocation, read-only container | ✅ Shipped |
 
-## Quality gates
+## Architecture
 
-Tudo roda no CI (`.github/workflows/ci.yml`) e bloqueia o merge na `main`:
-`fmt`, `clippy`, `test`, `sqlx`, `deny`, `wasm`, `coverage`, `e2e`, `pr-title`.
-`bench` é só informativo. Títulos de PR seguem Conventional Commits.
+```mermaid
+flowchart LR
+    subgraph Browser
+        P["HTMX pages<br/>(server-rendered HTML)"]
+        W["Canvas engine<br/>(Rust → WASM, Loro doc)"]
+    end
 
-Mudou uma query SQL? Rode `cargo sqlx prepare --workspace` e commite `.sqlx/`.
+    subgraph VPS["ARM VPS (Docker)"]
+        C["Caddy<br/>(shared reverse proxy, TLS)"]
+        subgraph S["Axum server"]
+            H["Pages + HTMX partials<br/>(Askama templates)"]
+            R["WebSocket relay<br/>(server-side Loro copy per board)"]
+            E["SSE /ritmo/events"]
+        end
+        D[("SQLite (WAL)")]
+    end
 
-## Deploy
+    G["GitHub OAuth"]
 
-Produção: <https://vanguarda-meeting.emioitenta.com.br>, na VPS `m80-loadtest`
-(Oracle Ampere, aarch64), ao lado do stack do m80.
+    P -- "HTTPS: GET/POST (HTMX)" --> C
+    P -- "SSE" --> C
+    W -- "WebSocket: Loro updates + presence" --> C
+    C --> H
+    C --> E
+    C --> R
+    H --> D
+    R -- "snapshots" --> D
+    H -- "OAuth code exchange" --> G
+```
 
-- Todo push na `main` com CI verde dispara `.github/workflows/deploy.yml`: compila
-  o servidor para aarch64, publica `ghcr.io/murandido/vanguarda-meeting:<sha>` e
-  roda `deploy/deploy.sh` na VPS (health check + rollback automático).
-- Na VPS, `/opt/vanguarda` guarda `compose.yml`, `.env` (segredos, `600`) e
-  `data/` (SQLite, dono `10001`). O site entra no Caddy do m80 por
-  `/opt/caddy-sites/vanguarda-meeting.caddy`.
-- Segredos do workflow ficam no environment `production` do GitHub:
-  `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`.
-- Convidar ou remover alguém (remover corta o acesso no reinício): editar `ALLOWED_GITHUB_USERS` em `/opt/vanguarda/.env` e rodar
-  `docker compose -f /opt/vanguarda/compose.yml up -d` com `IMAGE_TAG` atual.
+- **Ritmo** is server-authoritative: forms post through HTMX, the server
+  validates and stores the change, and an SSE event tells every open page to
+  re-fetch the board fragment.
+- **Cartazes** is local-first: the canvas engine applies edits to a local Loro
+  document and exchanges binary updates over a WebSocket. The server keeps its
+  own copy of each board, relays updates to the other participant and persists
+  snapshots.
 
-### Backup e restauração
+See [docs/architecture.md](docs/architecture.md) for the data flows, auth and
+security model, and [docs/adr/](docs/adr/) for the decisions behind them.
 
-RNF-05. `deploy/backup.sh` roda todo dia às 04:30 (horário de Brasília) pelo
-`vanguarda-backup.timer` do systemd, que o `deploy.sh` instala e ativa sozinho
-(units em `deploy/systemd/`; `Persistent=true` cobre a VPS desligada no horário).
+## Tech stack
 
-- **Como copia:** `VACUUM INTO` num contêiner descartável
-  `keinos/sqlite3` (fixado por tag e digest; a VPS não tem `sqlite3`), rodando
-  como `10001` e montando `data/`. No modo WAL a cópia lê um snapshot de uma
-  única transação, sem parar nem bloquear o app, e sai como um banco único
-  (sem `-wal`). Depois de compactado, o próprio `.gz` é descompactado e
-  conferido com `PRAGMA integrity_check`; só então substitui o anterior.
-- **Onde fica:** `/opt/vanguarda/backups/` (dono `deploy`, `700`):
-  `daily/vanguarda-AAAA-MM-DD.db.gz` (14 dias), `weekly/vanguarda-AAAA-Wss.db.gz`
-  (8 semanas ISO, a cópia mais recente de cada semana) e `pre-restore/` (10
-  últimas cópias feitas pelo `restore.sh`).
-- **Offsite (opcional, desligado):** criar `/opt/vanguarda/backup.env` com
-  `BACKUP_OFFSITE=rclone:<remoto:caminho>` ou `BACKUP_OFFSITE=scp:<usuario@host:caminho>`
-  envia a cópia diária para fora da VPS (a rotação lá fica por conta do destino).
-- **Operação:**
+| Component | Choice | Why |
+| --- | --- | --- |
+| Language | Rust (2024 edition) everywhere | One language and type system from the database to the canvas ([ADR 0001](docs/adr/0001-rust-end-to-end.md)) |
+| HTTP server | [Axum](https://github.com/tokio-rs/axum) on Tokio | Small, composable, first-class WebSocket and SSE support |
+| Pages | [HTMX](https://htmx.org) + [Askama](https://github.com/askama-rs/askama) templates | Server-rendered HTML with compile-time-checked templates, no SPA build ([ADR 0003](docs/adr/0003-htmx-server-rendered-ui.md)) |
+| Canvas engine | Rust compiled to WebAssembly (`wasm-bindgen`) | Shares the board model with the server; only the canvas needs client-side logic |
+| Whiteboard sync | [Loro](https://loro.dev) CRDT | Concurrent edits converge without a central lock; offline edits merge on reconnect ([ADR 0002](docs/adr/0002-loro-crdt.md)) |
+| Database | SQLite via [sqlx](https://github.com/launchbadge/sqlx) | Zero-ops, single file, queries checked at compile time ([ADR 0004](docs/adr/0004-sqlite.md)) |
+| Auth | GitHub OAuth with an allow-list | Both users already have GitHub accounts; no passwords to store ([ADR 0005](docs/adr/0005-github-oauth-allowlist.md)) |
+| Deployment | arm64 Docker image on GHCR, Caddy, SSH deploy | Cheap ARM VPS, automatic TLS, rollback on failed health check ([ADR 0006](docs/adr/0006-deployment.md)) |
+| Tests | cargo-nextest, proptest, Playwright | Unit, integration, CRDT convergence properties and two-user browser flows ([ADR 0007](docs/adr/0007-quality-gates.md)) |
 
-  ```sh
-  systemctl list-timers vanguarda-backup.timer      # próxima execução
-  sudo systemctl start vanguarda-backup.service     # backup agora
-  journalctl -u vanguarda-backup.service -n 50      # logs
-  ls -l /opt/vanguarda/backups/daily
-  ```
+## Repository layout
 
-- **Restaurar:**
+| Path | Contents |
+| --- | --- |
+| `crates/shared` | Protocol types shared by server and client (presence messages, board id validation) |
+| `crates/canvas` | Cartazes engine: board state in a Loro document; JS bridge in `src/wasm.rs` |
+| `crates/server` | Axum app: pages, auth, WebSocket rooms, Ritmo, SQLite migrations, templates and static assets |
+| `e2e/` | Playwright end-to-end tests (two users in separate browser contexts) |
+| `deploy/` | Production compose file, deploy, backup and restore scripts, systemd backup timer and Caddy site template |
+| `scripts/` | CI helpers (WASM size budget) |
+| `.sqlx/` | Offline query metadata for sqlx (`cargo sqlx prepare --workspace`) |
+| `docs/` | Architecture, operations runbook and ADRs |
 
-  ```sh
-  /opt/vanguarda/restore.sh /opt/vanguarda/backups/daily/vanguarda-2026-10-20.db.gz
-  ```
+## Getting started
 
-  O script confere o backup antes de tudo, pede para digitar `restaurar`
-  (ou `--yes`), copia o banco atual para `backups/pre-restore/` com o app no
-  ar, para o contêiner `vanguarda-meeting`, troca `data/vanguarda.db` (apagando
-  o `-wal`/`-shm` antigos), sobe o contêiner e espera o health check. Se o app
-  não ficar saudável, ele mostra o comando para voltar à cópia `pre-restore`.
-  Restaurar um banco com migrações mais novas que a imagem no ar não funciona:
-  use um backup da mesma versão ou mais antigo.
-- **Testar localmente:** os caminhos são configuráveis (`VANGUARDA_DIR`,
-  `DATA_DIR`, `BACKUP_DIR`, `DB_USER`, `APP_CONTAINER`; ver o cabeçalho dos
-  scripts), então dá para rodar os dois scripts contra um diretório qualquer.
+Prerequisites:
+
+- Rust stable with `rustfmt`, `clippy` and the `wasm32-unknown-unknown` target
+- [`wasm-pack`](https://github.com/drager/wasm-pack)
+- [`sqlx-cli`](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli) (only when changing SQL)
+- Node 22 (only for the end-to-end tests)
+- [`lefthook`](https://github.com/evilmartians/lefthook) (optional, pre-commit hooks)
+
+Build the canvas engine once, then run the server with the development login,
+which skips GitHub:
+
+```sh
+wasm-pack build crates/canvas --target web --release
+DEV_LOGIN=1 ALLOWED_GITHUB_USERS=ana,bia cargo run -p server
+# http://127.0.0.1:3000
+```
+
+Use `http://127.0.0.1:3000`, not `localhost`: the WebSocket only accepts an
+`Origin` equal to `PUBLIC_URL`. Open `/login` and sign in as `ana` in one window and as `bia` in a private
+window. Then:
+
+- create a board from **Cartazes → Novo quadro** on the home page and open it
+  in both: double-click (or `N`) creates a sticky note, dragging moves it, and
+  the other window follows along with a live cursor. Double-click or `Enter`
+  edits a note's text; the floating bar changes its color and the corner handle
+  resizes it. Pick a sticker under "Figurinhas" and click to place it; drag,
+  scale with the corner handle and rotate with the top handle or `[` / `]`.
+  `Delete` removes the selection. Space + drag, the middle button or a
+  two-finger scroll pans; Ctrl/Cmd + wheel or a pinch zooms (10%–400%) around
+  the pointer; `Shift+0` resets to 100% and `Shift+1` fits the content;
+- open `/ritmo` in both: create a project, add tasks, confirm the week and do
+  today's check-in at `/ritmo/checkin`; the other window updates on its own.
+
+To use real GitHub login, create a GitHub OAuth App with the callback
+`{PUBLIC_URL}/auth/github/callback` and set `GITHUB_CLIENT_ID` and
+`GITHUB_CLIENT_SECRET` instead of `DEV_LOGIN`.
+
+## Configuration
+
+The server is configured through environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ALLOWED_GITHUB_USERS` | required | Comma-separated GitHub logins allowed to sign in; `login:id` also pins the numeric account id (without it, the first sign-in binds the account) |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | none | GitHub OAuth App credentials; required unless `DEV_LOGIN` is on |
+| `PUBLIC_URL` | `http://127.0.0.1:3000` | Public base URL: the OAuth callback is `{PUBLIC_URL}/auth/github/callback`, and the only `Origin` accepted on writes and on the WebSocket |
+| `COOKIE_SECURE` | `true` when `PUBLIC_URL` is https | Send cookies over HTTPS only, with the `__Host-` prefix |
+| `DEV_LOGIN` | off | Enables `/auth/dev/{login}` for local development and E2E; refused unless `BIND` is a loopback address |
+| `DATABASE_URL` | `sqlite://vanguarda.db` | SQLite database (created and migrated on start) |
+| `BIND` | `127.0.0.1:3000` | Listen address |
+| `STATIC_DIR`, `PKG_DIR` | repository folders | Static assets and `wasm-pack` output |
+| `RUST_LOG` | `info,loro_internal=warn,server=debug` | Log filter (`tracing-subscriber` syntax) |
+
+## Testing and quality gates
+
+Every gate runs in CI and is required to merge into `main`, except the
+informational benchmarks. [`ci.yml`](.github/workflows/ci.yml) compiles the
+workspace once per heavy job (`rust` for QG-01..05 and QG-09, `web` for
+QG-07/08) and reports each gate as its own status check; docs-only pull
+requests skip compilation. QG-10 and QG-11 live in
+[`pr-title.yml`](.github/workflows/pr-title.yml) and
+[`bench.yml`](.github/workflows/bench.yml).
+
+| Gate | Job | What it checks |
+| --- | --- | --- |
+| QG-01 | `fmt` | `cargo fmt --check` |
+| QG-02 | `clippy` | Clippy with `pedantic`, warnings denied, native and `wasm32` |
+| QG-03/04 | `test` | Unit and integration tests (nextest), doctests, and a proptest that CRDT replicas converge regardless of update order |
+| QG-05 | `sqlx` | Offline query metadata in `.sqlx/` matches the queries and migrations |
+| QG-06 | `deny` | cargo-deny: advisories, licenses, banned crates, sources |
+| QG-07 | `wasm` | Release WASM build stays within 10% of the gzip size budget |
+| QG-08 | `e2e` | Playwright: two users on the same board and Ritmo page see each other's changes |
+| QG-09 | `coverage` | Line coverage may not drop more than 0.1 pp below `main` |
+| QG-10 | `pr-title` | PR title follows Conventional Commits (it becomes the squash commit) |
+| QG-11 | `bench` | Benchmarks build on `main` (informational, never blocks) |
+
+Locally:
+
+```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo deny check
+cd e2e && npm ci && npx playwright install chromium && npx playwright test
+```
+
+Changed a SQL query? Run `cargo sqlx prepare --workspace` and commit `.sqlx/`.
+Viewport culling benchmarks: `cargo bench -p canvas`.
+
+## Deployment
+
+Production runs as a single container on an ARM (aarch64) VPS behind a shared
+Caddy reverse proxy that terminates TLS. Every push to `main` with a green CI
+cross-compiles the server for arm64, publishes an image to GHCR and deploys it
+over SSH; the deploy script waits for the container's health check and rolls
+back to the previous image if it fails.
+
+The one-time server setup, configuration files, inviting a user, backups and
+restore are documented in [docs/operations.md](docs/operations.md).
+
+## How this was built
+
+Vanguarda is developed by [Murilo Cândido](https://github.com/murandido) with
+AI pair-programming through [Claude Code](https://claude.com/claude-code). The
+requirements, architecture decisions and reviews are his; much of the code and
+documentation was drafted with the assistant. Every change, whoever drafted it,
+goes through a pull request, the CI quality gates above and review before it
+reaches `main`.
+
+## License
+
+[MIT](LICENSE) © 2026 Murilo Cândido

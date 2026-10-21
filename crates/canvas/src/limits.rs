@@ -96,7 +96,7 @@ mod tests {
         let mut server = Board::new();
         let bytes = update(|b| b.add_rect("r1", 1.0, 2.0, 3.0, 4.0));
         server.import_within(&bytes, &Limits::default()).unwrap();
-        assert_eq!(server.rects().len(), 1);
+        assert_eq!(server.shapes().len(), 1);
     }
 
     #[test]
@@ -106,7 +106,7 @@ mod tests {
             .import_within(&[0xff; 64], &Limits::default())
             .unwrap_err();
         assert!(matches!(err, LimitError::Board(BoardError::Import(_))));
-        assert_eq!(server.rects(), Vec::new());
+        assert_eq!(server.shapes(), Vec::new());
     }
 
     #[test]
@@ -123,7 +123,7 @@ mod tests {
         });
         let err = server.import_within(&bytes, &limits).unwrap_err();
         assert!(matches!(err, LimitError::TooManyShapes(3, 2)));
-        assert_eq!(server.rects(), Vec::new());
+        assert_eq!(server.shapes(), Vec::new());
     }
 
     #[test]
@@ -134,7 +134,7 @@ mod tests {
             .import_within(&bytes, &Limits::default())
             .unwrap_err();
         assert!(matches!(err, LimitError::ShapeIdTooLong(65, 64)));
-        assert_eq!(server.rects(), Vec::new());
+        assert_eq!(server.shapes(), Vec::new());
     }
 
     #[test]
@@ -151,7 +151,7 @@ mod tests {
         });
         let err = server.import_within(&bytes, &limits).unwrap_err();
         assert!(matches!(err, LimitError::SnapshotTooLarge(_, 200)));
-        assert_eq!(server.rects(), Vec::new());
+        assert_eq!(server.shapes(), Vec::new());
         assert!(err.to_string().contains("snapshot grande demais"));
     }
 }

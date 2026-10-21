@@ -79,7 +79,7 @@ test("ritmo cabe no celular (375 px)", async ({ browser }) => {
     const page = await ctx.newPage();
     await entrar(page, "bia");
     await page.goto("/ritmo");
-    await expect(page.getByRole("link", { name: /Check-in de hoje/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /check-in de hoje/i })).toBeVisible();
     const largura = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(largura).toBeLessThanOrEqual(375);
   } finally {

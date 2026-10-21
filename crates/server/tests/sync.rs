@@ -157,7 +157,7 @@ async fn wait_saved(pool: &SqlitePool, board: &str, ok: impl Fn(&Board) -> bool)
     let last = db::load_snapshot(pool, board)
         .await
         .unwrap()
-        .map(|b| Board::from_snapshot(&b).unwrap().rects().len());
+        .map(|b| Board::from_snapshot(&b).unwrap().shapes().len());
     panic!("snapshot de {board} não foi salvo a tempo (formas: {last:?})");
 }
 
@@ -180,12 +180,12 @@ async fn edits_reach_the_other_client() {
     a.add_rect("r1", 10.0, 20.0, 100.0, 50.0);
     push(&mut ws_a, &mut a).await;
     b.import(&next_binary(&mut ws_b).await).unwrap();
-    assert_eq!(b.rects(), a.rects());
+    assert_eq!(b.shapes(), a.shapes());
 
     b.move_shape("r1", 300.0, 400.0).unwrap();
     push(&mut ws_b, &mut b).await;
     a.import(&next_binary(&mut ws_a).await).unwrap();
-    assert_eq!(a.rects()[0].x, 300.0);
+    assert_eq!(a.shapes()[0].x, 300.0);
 }
 
 #[tokio::test]
@@ -199,15 +199,15 @@ async fn late_joiner_and_restart_get_the_saved_board() {
 
     // Quem chega depois recebe o estado no snapshot inicial.
     let (ws_b, b) = join(&base, "q2", "bia").await;
-    assert_eq!(b.rects(), a.rects());
+    assert_eq!(b.shapes(), a.shapes());
 
     // Todos saem: o último salva. Um servidor novo sobre o mesmo banco
     // recebe o quadro.
     drop((ws_a, ws_b));
-    wait_saved(&pool, "q2", |s| s.rects() == a.rects()).await;
+    wait_saved(&pool, "q2", |s| s.shapes() == a.shapes()).await;
     let base2 = start(pool).await;
     let (_ws_c, c) = join(&base2, "q2", "ana").await;
-    assert_eq!(c.rects(), a.rects());
+    assert_eq!(c.shapes(), a.shapes());
 }
 
 #[tokio::test]
@@ -280,7 +280,7 @@ async fn saves_are_debounced_and_flushed_when_the_last_one_leaves() {
         a.add_rect(&format!("r{i}"), f64::from(i), 0.0, 1.0, 1.0);
         push(&mut ws_a, &mut a).await;
     }
-    while b.rects().len() < 20 {
+    while b.shapes().len() < 20 {
         b.import(&next_binary(&mut ws_b).await).unwrap();
     }
     // O servidor já aplicou tudo, mas o salvamento periódico ainda não veio.
@@ -291,8 +291,8 @@ async fn saves_are_debounced_and_flushed_when_the_last_one_leaves() {
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(db::load_snapshot(&pool, "q6").await.unwrap(), None);
     drop(ws_a);
-    let saved = wait_saved(&pool, "q6", |s| s.rects().len() == 20).await;
-    assert_eq!(saved.rects(), a.rects());
+    let saved = wait_saved(&pool, "q6", |s| s.shapes().len() == 20).await;
+    assert_eq!(saved.shapes(), a.shapes());
     wait_rooms(&base.rooms, 0).await;
 }
 
@@ -310,8 +310,8 @@ async fn periodic_save_after_quiet_period() {
         push(&mut ws_a, &mut a).await;
     }
     // Ainda conectado: o salvamento periódico grava tudo.
-    let saved = wait_saved(&pool, "q7", |s| s.rects().len() == 10).await;
-    assert_eq!(saved.rects(), a.rects());
+    let saved = wait_saved(&pool, "q7", |s| s.shapes().len() == 10).await;
+    assert_eq!(saved.shapes(), a.shapes());
 }
 
 #[tokio::test]
@@ -326,7 +326,7 @@ async fn graceful_shutdown_saves_and_closes() {
 
     base.rooms.shutdown(&pool).await;
     let bytes = db::load_snapshot(&pool, "q8").await.unwrap().unwrap();
-    assert_eq!(Board::from_snapshot(&bytes).unwrap().rects(), a.rects());
+    assert_eq!(Board::from_snapshot(&bytes).unwrap().shapes(), a.shapes());
     assert_eq!(closed(&mut ws_a).await, Some(CloseCode::Restart));
     assert_eq!(closed(&mut ws_b).await, Some(CloseCode::Restart));
 
@@ -385,7 +385,7 @@ async fn garbage_and_oversized_frames_do_not_kill_the_room() {
     ok.add_rect("r1", 1.0, 2.0, 3.0, 4.0);
     push(&mut ws_a, &mut ok).await;
     b.import(&next_binary(&mut ws_b).await).unwrap();
-    assert_eq!(b.rects(), ok.rects());
+    assert_eq!(b.shapes(), ok.shapes());
 
     // Grande demais: só a conexão de quem mandou cai.
     let _ = ws_a
@@ -396,7 +396,7 @@ async fn garbage_and_oversized_frames_do_not_kill_the_room() {
     b.add_rect("r2", 5.0, 5.0, 5.0, 5.0);
     push(&mut ws_b, &mut b).await;
     let (mut ws_c, mut c) = join(&base, "q1", "ana").await;
-    while c.rects() != b.rects() {
+    while c.shapes() != b.shapes() {
         c.import(&next_binary(&mut ws_c).await).unwrap();
     }
 }
@@ -430,6 +430,6 @@ async fn rooms_are_freed_and_never_duplicated() {
         task.await.unwrap();
     }
     wait_rooms(&base.rooms, 0).await;
-    let saved = wait_saved(&pool, "q2", |s| s.rects().len() == 20).await;
-    assert_eq!(saved.rects().len(), 20);
+    let saved = wait_saved(&pool, "q2", |s| s.shapes().len() == 20).await;
+    assert_eq!(saved.shapes().len(), 20);
 }

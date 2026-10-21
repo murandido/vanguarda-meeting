@@ -8,10 +8,10 @@
   </header>
   <p id="aviso" class="error" role="alert" hidden></p>
   <h2>Check-in de hoje <small>{{ today }}</small></h2>
-  {% if items.is_empty() %}
-  <p>Nenhuma tarefa ativa nesta semana. <a href="/ritmo">Voltar para o quadro</a>.</p>
-  {% else %}
   <form id="form-checkin" class="checkin" hx-post="/ritmo/checkin" hx-swap="none">
+    {% if items.is_empty() %}
+    <p>Nenhuma tarefa ativa nesta semana. Salve o check-in mesmo assim para manter o streak.</p>
+    {% endif %}
     {% for it in items %}
     <fieldset class="item" data-cor="{{ it.color }}">
       <legend>{{ it.title }} <small>{{ it.project }}</small></legend>
@@ -28,7 +28,6 @@
       <a href="/ritmo">Cancelar</a>
     </p>
   </form>
-  {% endif %}
 </main>
 <script src="/static/ritmo.js" defer></script>
 {% endblock %}

@@ -1,7 +1,7 @@
 // Gate da Fase 0: dois usuários (contextos separados) no mesmo quadro
 // enxergam criação, movimento e persistência dos post-its via Loro + WS.
 import { expect, test } from "@playwright/test";
-import { doisUsuarios, esperaPostit, pixelsColoridos, quadroUnico } from "./canvas";
+import { criarPostit, doisUsuarios, esperaPostit, pixelsColoridos, quadroUnico } from "./canvas";
 
 test("criar, mover e persistir post-it entre dois usuários", async ({ browser }) => {
   const quadro = quadroUnico();
@@ -19,7 +19,7 @@ test("criar, mover e persistir post-it entre dois usuários", async ({ browser }
     await esperaPostit(b, ...SONDA_ORIGEM).toBe(false);
 
     // A cria um retângulo 120x80 centrado no duplo clique.
-    await a.mouse.dblclick(400, 300);
+    await criarPostit(a, 400, 300);
     await esperaPostit(a, ...SONDA_ORIGEM).toBe(true);
     await esperaPostit(b, ...SONDA_ORIGEM).toBe(true);
 

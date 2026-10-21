@@ -63,27 +63,44 @@ impl AppState {
 /// Relógio do servidor em segundos Unix. Os handlers leem o "agora" daqui,
 /// e não do sistema, para os testes fixarem datas.
 #[derive(Clone, Default)]
-pub struct Clock(Option<Arc<AtomicI64>>);
+pub struct Clock {
+    fixed: Option<Arc<AtomicI64>>,
+    /// Added to the system time (development and E2E only).
+    shift: i64,
+}
 
 impl Clock {
     /// Relógio parado em `secs`, ajustável com [`Clock::set`].
     #[must_use]
     pub fn fixed(secs: i64) -> Self {
-        Self(Some(Arc::new(AtomicI64::new(secs))))
+        Self {
+            fixed: Some(Arc::new(AtomicI64::new(secs))),
+            shift: 0,
+        }
+    }
+
+    /// System clock moved by `secs`: time keeps running, but on another day.
+    /// Used by `DEV_TODAY` so the E2E tests run on a known weekday.
+    #[must_use]
+    pub fn shifted(secs: i64) -> Self {
+        Self {
+            fixed: None,
+            shift: secs,
+        }
     }
 
     /// Muda a hora de um relógio fixo (no relógio do sistema, não faz nada).
     pub fn set(&self, secs: i64) {
-        if let Some(t) = &self.0 {
+        if let Some(t) = &self.fixed {
             t.store(secs, Ordering::Relaxed);
         }
     }
 
     #[must_use]
     pub fn now(&self) -> i64 {
-        self.0
+        self.fixed
             .as_ref()
-            .map_or_else(auth::now, |t| t.load(Ordering::Relaxed))
+            .map_or_else(|| auth::now() + self.shift, |t| t.load(Ordering::Relaxed))
     }
 }
 
@@ -125,6 +142,16 @@ pub fn spawn_session_cleanup(
             }
         }
     })
+}
+
+/// A running clock whose local date (at `offset_minutes` from UTC) is `day`
+/// (`YYYY-MM-DD`), keeping the time of day; `None` if `day` is not a date.
+/// `now` is the real current time.
+#[must_use]
+pub fn clock_on(day: &str, offset_minutes: i64, now: i64) -> Option<Clock> {
+    let target = ritmo::date::Date::parse(day)?;
+    let today = ritmo::date::Date::from_unix(now, offset_minutes);
+    Some(Clock::shifted(target.days_since(today) * 86_400))
 }
 
 /// Onde ficam os arquivos estáticos: `static/` do crate e o `pkg/` gerado

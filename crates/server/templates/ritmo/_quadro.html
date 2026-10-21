@@ -9,9 +9,31 @@
   <p class="acoes-semana">
     <a id="checkin" class="button primary" href="/ritmo/checkin">{% if q.checked_in %}Editar check-in de hoje{% else %}Check-in de hoje{% endif %}</a>
     {% if q.is_meeting_day %}
-    {% if let Some(n) = q.next %}<span class="hint">Hoje é dia de reunião: <a href="/ritmo?semana={{ n }}">planejar a próxima semana</a>.</span>{% endif %}
+    {% if let Some(n) = q.next %}<span class="hint">Hoje é dia de reunião: <a href="/ritmo/semana/fechar?semana={{ q.semana }}">fechar a semana</a> e <a href="/ritmo?semana={{ n }}">planejar a próxima</a>.</span>{% endif %}
     {% endif %}
   </p>
+  {% if let Some(u) = q.unclosed %}
+  <p class="hint aviso-fechar">A semana anterior ainda não foi fechada: <a href="/ritmo/semana/fechar?semana={{ u }}">fechar agora</a>.</p>
+  {% endif %}
+  {% if let Some(s) = q.streaks %}
+  <section class="streaks" aria-label="Sequências de check-in">
+    {% for p in s.people %}
+    <p class="streak" data-login="{{ p.login }}" data-status="{{ p.status }}">
+      <span class="fogo" aria-hidden="true">🔥</span>
+      <strong class="dias">{{ p.current }}</strong> {{ p.days }}
+      <span class="quem">{% if p.mine %}você{% else %}{{ p.login }}{% endif %}</span>
+      <span class="freezes" title="Proteções guardadas: cada uma cobre um dia sem check-in">🧊 {{ p.freezes }}/{{ s.max_freezes }}</span>
+      <small class="estado">{{ p.hint }}</small>
+    </p>
+    {% endfor %}
+    <p class="streak dupla" data-status="{% if s.pair_today %}feito{% else %}pendente{% endif %}">
+      <span class="fogo" aria-hidden="true">🔥</span>
+      <strong class="dias">{{ s.pair }}</strong> {{ s.pair_days }}
+      <span class="quem">dupla</span>
+      <small class="estado">{% if s.pair_today %}os dois fizeram check-in hoje{% else %}conta quando os dois fazem check-in{% endif %}</small>
+    </p>
+  </section>
+  {% endif %}
   {% else if q.editable %}
   <p class="hint">Planejando a próxima semana. <a href="/ritmo">Voltar para a semana atual</a>.</p>
   {% else %}
@@ -31,6 +53,11 @@
   <section class="raia" data-login="{{ lane.login }}">
     <header>
       <h3>{{ lane.login }}{% if lane.mine %} <small>(você)</small>{% endif %}</h3>
+      {% if let Some(f) = lane.closed %}
+      <span class="fechada">Semana fechada {{ f.when }} · prometido {{ f.promised_done }}/{{ f.promised }}{% if let Some(p) = f.percent %} ({{ p }}%){% endif %}</span>
+      {% else if lane.can_close %}
+      <a class="button fechar" href="/ritmo/semana/fechar?semana={{ q.semana }}">Fechar semana</a>
+      {% endif %}
       {% if let Some(c) = lane.confirmed %}
       <span class="prometido">Prometido: {{ lane.promised_done }}/{{ lane.promised_total }} feito · confirmado {{ c }}</span>
       {% else if lane.can_confirm %}
@@ -51,8 +78,9 @@
               <span class="projeto">{{ t.project_name }}</span>
               <span class="tamanho" title="tamanho">{{ t.size }}</span>
               {% if t.promised %}<span class="selo">prometido</span>{% endif %}
+              {% if t.carried %}<span class="selo levada" title="veio da semana anterior">↪ levada</span>{% endif %}
             </span>
-            {% if lane.mine && q.editable %}
+            {% if lane.mine && lane.editable %}
             <span class="mover">
               {% if let Some((key, label)) = t.prev %}
               <button hx-post="/ritmo/tarefas/{{ t.id }}/mover" hx-vals='{"para": "{{ key }}"}' hx-swap="none" aria-label="Mover para {{ label }}" title="Mover para {{ label }}">←</button>
