@@ -44,7 +44,7 @@ impl AppState {
             db,
             rooms: Rooms::default(),
             auth: Arc::new(auth),
-            http: reqwest::Client::new(),
+            http: http_client(HTTP_CONNECT_TIMEOUT, HTTP_TIMEOUT),
             clock: Clock::default(),
             ritmo: ritmo::Events::default(),
         }
@@ -83,6 +83,22 @@ impl Clock {
             .as_ref()
             .map_or_else(auth::now, |t| t.load(Ordering::Relaxed))
     }
+}
+
+/// Connect timeout for the OAuth calls to GitHub.
+pub const HTTP_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// Total timeout for each request to GitHub (connect + response).
+pub const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Outgoing HTTP client with timeouts: a slow GitHub cannot hold the OAuth
+/// callback (and the browser's connection) forever.
+#[must_use]
+pub fn http_client(connect: std::time::Duration, total: std::time::Duration) -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(connect)
+        .timeout(total)
+        .build()
+        .expect("cliente HTTP com TLS do sistema")
 }
 
 /// How often expired and revoked sessions are cleaned up.

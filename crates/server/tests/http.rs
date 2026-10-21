@@ -115,3 +115,26 @@ async fn binary_healthcheck_exit_code() {
     drop(closed);
     assert_eq!(run(dead.to_string()).code(), Some(1));
 }
+
+/// A server that accepts the connection and never answers does not hang the client.
+#[tokio::test]
+async fn http_client_times_out() {
+    use std::time::{Duration, Instant};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (_socket, _) = listener.accept().await.unwrap();
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    });
+
+    let client = server::http_client(Duration::from_millis(200), Duration::from_millis(300));
+    let started = Instant::now();
+    let err = client
+        .get(format!("http://{addr}/"))
+        .send()
+        .await
+        .unwrap_err();
+    assert!(err.is_timeout(), "{err}");
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
