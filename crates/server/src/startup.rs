@@ -79,6 +79,7 @@ pub async fn serve(
             .ok_or_else(|| anyhow::anyhow!("DEV_TODAY inválido: {day}"))?;
         tracing::warn!("DEV_TODAY ativo: o Ritmo acha que hoje é {day}");
     }
+    let _cleanup = crate::spawn_session_cleanup(state.clone(), crate::SESSION_CLEANUP_EVERY);
     let (rooms, db) = (state.rooms.clone(), state.db.clone());
     let router = app(state, &config.assets);
 

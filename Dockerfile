@@ -7,7 +7,8 @@
 #   dist/static/  crates/server/static
 #   dist/pkg/     saída do wasm-pack
 # glibc do runtime (2.41) >= a do runner que compila (Ubuntu 24.04, 2.39).
-FROM debian:trixie-slim
+# debian:trixie-slim (multi-arch index), pinned by digest.
+FROM debian@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
 
 # ca-certificates: o reqwest valida o TLS do GitHub com os certificados do sistema.
 RUN apt-get update \

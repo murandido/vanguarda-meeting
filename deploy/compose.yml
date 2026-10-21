@@ -15,6 +15,14 @@ services:
       BIND: 0.0.0.0:3000
     volumes:
       - ./data:/data
+    # Hardening: read-only root (only the /data mount and /tmp are writable;
+    # SQLite in WAL mode keeps -wal/-shm next to the database in /data), no
+    # capabilities, no privilege escalation and a process limit.
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
     networks: [proxy]
     restart: unless-stopped
     healthcheck:

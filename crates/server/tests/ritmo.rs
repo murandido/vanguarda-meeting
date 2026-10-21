@@ -330,6 +330,8 @@ async fn checkin_once_per_day_and_editable() {
     .await;
 
     let body = d.page(&d.ana, "/ritmo/checkin").await;
+    common::assert_csp_safe(&body, "/ritmo/checkin");
+    assert!(body.contains(r##"<fieldset class="item" data-cor="#"##));
     assert!(body.contains("21/10 (quarta-feira)"));
     assert!(body.contains(&format!(r#"name="status-{a}" value="untouched" checked"#)));
     assert!(body.contains(&format!(r#"name="nota-{b}""#)));
@@ -437,6 +439,7 @@ async fn partner_sees_my_checkin_in_the_feed() {
     .await;
 
     let body = d.page(&d.bia, "/ritmo").await;
+    common::assert_csp_safe(&body, "/ritmo");
     let feed = &body[body.find(r#"<section class="feed""#).unwrap()..];
     assert!(feed.contains(r#"<article class="checkin-feito" data-login="ana">"#));
     assert!(feed.contains("<h4>ana <small>às 12:00</small></h4>"));

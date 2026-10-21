@@ -104,7 +104,7 @@ Caddyfile) and must be attached to `PROXY_NETWORK`, so it can reach the app at
 
 `PUBLIC_URL` must be identical in the GitHub variable and in `.env`: the OAuth
 callback is built from it, and the Origin checks on WebSocket upgrades and
-form posts (the latter added by #17) compare requests against it.
+form posts compare requests against it.
 
 ## Routine tasks
 
@@ -124,12 +124,9 @@ export IMAGE_TAG="$(. ./.deploy-state; echo "$CURRENT_TAG")"
 
 ### Remove someone
 
-Remove the login from `ALLOWED_GITHUB_USERS` and recreate the container. Until
-the security hardening in
-[#17](https://github.com/murandido/vanguarda-meeting/pull/17) lands, existing
-sessions stay valid until they expire (30 days), so also delete that login's
-rows from the `sessions` table. With #17, the allow-list is checked on every
-request and revoked sessions are purged automatically.
+Remove the login from `ALLOWED_GITHUB_USERS` and recreate the container. The
+allow-list is checked on every request, so access ends immediately, and the
+session cleanup task purges that login's sessions at boot and then hourly.
 
 ### Roll back by hand
 

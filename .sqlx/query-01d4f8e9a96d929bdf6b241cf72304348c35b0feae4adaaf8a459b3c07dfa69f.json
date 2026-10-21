@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM sessions\n         WHERE expires_at <= ? OR login NOT IN (SELECT value FROM json_each(?))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "01d4f8e9a96d929bdf6b241cf72304348c35b0feae4adaaf8a459b3c07dfa69f"
+}

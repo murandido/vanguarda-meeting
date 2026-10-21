@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO users (login, github_id) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "90fe08ebd00a7815ceb2a64fec1f17221e0ff5dea21fdfec1fa4d7da11d4ffa7"
+}

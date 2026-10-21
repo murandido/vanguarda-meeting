@@ -14,8 +14,9 @@ use server::{AuthConfig, db};
 use std::collections::HashMap;
 use tokio::net::TcpListener;
 
-/// GitHub falso: o `code` vira o token `tok-<code>`, e o token vira o login.
-/// O code `falha` faz a troca de token devolver 500.
+/// Fake GitHub: the `code` becomes the token `tok-<code>`, and the token
+/// becomes the login. The code may carry the account id (`login@id`; 42 by
+/// default). The code `falha` makes the token exchange answer 500.
 async fn fake_github() -> String {
     async fn token(Form(form): Form<HashMap<String, String>>) -> Result<Json<Value>, StatusCode> {
         assert_eq!(form["client_id"], "cid");
@@ -27,9 +28,12 @@ async fn fake_github() -> String {
     }
     async fn user(headers: HeaderMap) -> Json<Value> {
         let auth = headers[header::AUTHORIZATION].to_str().unwrap();
-        let login = auth.strip_prefix("Bearer tok-").unwrap();
+        let code = auth.strip_prefix("Bearer tok-").unwrap();
+        let (login, id) = code
+            .split_once('@')
+            .map_or((code, 42), |(l, id)| (l, id.parse().unwrap()));
         assert!(headers.contains_key(header::USER_AGENT));
-        Json(json!({ "login": login, "id": 42, "name": "Nome", "avatar_url": null }))
+        Json(json!({ "login": login, "id": id, "name": "Nome", "avatar_url": null }))
     }
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -41,10 +45,17 @@ async fn fake_github() -> String {
     url
 }
 
+/// Session cookie with an https `PUBLIC_URL` (`__Host-` prefix).
+const SESSION: &str = "__Host-vanguarda_session=";
+
 async fn oauth_app() -> (Router, sqlx::SqlitePool) {
+    oauth_app_with("ana,bia").await
+}
+
+async fn oauth_app_with(allowed: &str) -> (Router, sqlx::SqlitePool) {
     let github = fake_github().await;
     let auth = AuthConfig::from_vars(|k| match k {
-        "ALLOWED_GITHUB_USERS" => Some("ana,bia".into()),
+        "ALLOWED_GITHUB_USERS" => Some(allowed.into()),
         "GITHUB_CLIENT_ID" => Some("cid".into()),
         "GITHUB_CLIENT_SECRET" => Some("segredo".into()),
         "PUBLIC_URL" => Some("https://vanguarda.exemplo".into()),
@@ -69,7 +80,7 @@ async fn start(app: &Router) -> (String, String) {
         "https://vanguarda.exemplo/auth/github/callback"
     );
     let cookie = set_cookies(&res).remove(0);
-    assert!(cookie.starts_with("vanguarda_oauth_state="));
+    assert!(cookie.starts_with("__Host-vanguarda_oauth_state="));
     // PUBLIC_URL em https: cookies com Secure.
     assert!(
         res.headers()[header::SET_COOKIE]
@@ -91,7 +102,7 @@ async fn callback(app: &Router, cookie: &str, code: &str, state: &str) -> axum::
 fn session_of(res: &axum::response::Response) -> Option<String> {
     set_cookies(res)
         .into_iter()
-        .find(|c| c.starts_with("vanguarda_session=") && c.len() > "vanguarda_session=".len())
+        .find(|c| c.starts_with(SESSION) && c.len() > SESSION.len())
 }
 
 #[tokio::test]
@@ -104,7 +115,7 @@ async fn protected_routes_need_login() {
     let res = get(&app, "/ws/qualquer", None).await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
-    let res = get(&app, "/", Some("vanguarda_session=inventada")).await;
+    let res = get(&app, "/", Some("__Host-vanguarda_session=inventada")).await;
     assert_eq!(location(&res), "/login");
 }
 
@@ -129,6 +140,19 @@ async fn invited_user_logs_in_and_out() {
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     assert_eq!(location(&res), "/");
     let session = session_of(&res).expect("sessão criada");
+    let raw = res
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .map(|v| v.to_str().unwrap())
+        .find(|v| v.starts_with(SESSION))
+        .unwrap();
+    // `__Host-` prefix requirements: Secure, Path=/ and no Domain.
+    assert!(raw.contains("; Secure") && raw.contains("Path=/") && !raw.contains("Domain"));
+
+    // The old unprefixed name no longer works over HTTPS.
+    let old_name = session.replace("__Host-", "");
+    assert_eq!(location(&get(&app, "/", Some(&old_name)).await), "/login");
 
     let res = get(&app, "/", Some(&session)).await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -140,7 +164,7 @@ async fn invited_user_logs_in_and_out() {
         .unwrap();
     let res = send(&app, req).await;
     assert_eq!(location(&res), "/login");
-    assert!(set_cookies(&res).contains(&"vanguarda_session=".to_owned()));
+    assert!(set_cookies(&res).contains(&SESSION.to_owned()));
 
     let res = get(&app, "/", Some(&session)).await;
     assert_eq!(location(&res), "/login", "sessão apagada no logout");
@@ -206,6 +230,212 @@ async fn expired_session_is_rejected() {
         .await
         .unwrap();
     db::create_session(&pool, "velha", "ana", 1).await.unwrap();
-    let res = get(&app, "/", Some("vanguarda_session=velha")).await;
+    let res = get(&app, "/", Some("__Host-vanguarda_session=velha")).await;
     assert_eq!(location(&res), "/login");
+}
+
+/// Runs the whole OAuth flow and returns the session cookie, if let in.
+async fn oauth_login(app: &Router, code: &str) -> Result<String, String> {
+    let (cookie, state) = start(app).await;
+    let res = callback(app, &cookie, code, &state).await;
+    session_of(&res).ok_or_else(|| location(&res).to_owned())
+}
+
+#[tokio::test]
+async fn pinned_github_id_must_match() {
+    let (app, pool) = oauth_app_with("ana:7,bia").await;
+    assert_eq!(
+        oauth_login(&app, "ana@42").await.unwrap_err(),
+        "/login?erro=nao-convidado"
+    );
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), None);
+    oauth_login(&app, "ana@7").await.expect("id certo entra");
+    // Entries without an id still work (backward compatible).
+    oauth_login(&app, "bia@99")
+        .await
+        .expect("login sem id entra");
+}
+
+#[tokio::test]
+async fn login_stays_bound_to_first_github_account() {
+    let (app, pool) = oauth_app().await;
+    oauth_login(&app, "ana@42")
+        .await
+        .expect("primeiro uso vincula");
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(42));
+
+    // Another account registered "ana" after the original one released it.
+    assert_eq!(
+        oauth_login(&app, "ana@666").await.unwrap_err(),
+        "/login?erro=nao-convidado"
+    );
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(42));
+    oauth_login(&app, "Ana@42")
+        .await
+        .expect("a dona continua entrando");
+}
+
+#[tokio::test]
+async fn renamed_account_moves_its_row() {
+    let (app, pool) = oauth_app().await;
+    let old = oauth_login(&app, "ana@42").await.unwrap();
+
+    // Account 42 became "bia" on GitHub (and "bia" is invited).
+    let new = oauth_login(&app, "bia@42").await.expect("renomeada entra");
+    assert_eq!(db::github_id_of(&pool, "bia").await.unwrap(), Some(42));
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), None);
+    assert_eq!(location(&get(&app, "/", Some(&old)).await), "/login");
+    let res = get(&app, "/", Some(&new)).await;
+    assert!(body_text(res).await.contains("<span>bia</span>"));
+
+    // Whoever registers the old name is someone else: a new row.
+    oauth_login(&app, "ana@77").await.unwrap();
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(77));
+}
+
+#[tokio::test]
+async fn rename_onto_someone_elses_login_is_refused() {
+    let (app, pool) = oauth_app().await;
+    oauth_login(&app, "ana@42").await.unwrap();
+    oauth_login(&app, "bia@43").await.unwrap();
+    assert_eq!(
+        oauth_login(&app, "bia@42").await.unwrap_err(),
+        "/login?erro=nao-convidado"
+    );
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(42));
+    assert_eq!(db::github_id_of(&pool, "bia").await.unwrap(), Some(43));
+}
+
+#[tokio::test]
+async fn rename_replaces_row_without_github_id() {
+    let (app, pool) = oauth_app().await;
+    db::upsert_user(&pool, "bia", None, None, None)
+        .await
+        .unwrap();
+    oauth_login(&app, "ana@42").await.unwrap();
+    oauth_login(&app, "bia@42")
+        .await
+        .expect("linha sem id dá lugar");
+    assert_eq!(db::github_id_of(&pool, "bia").await.unwrap(), Some(42));
+
+    // Row without an id (development login) and a new account: just bind.
+    db::upsert_user(&pool, "ana", None, None, None)
+        .await
+        .unwrap();
+    oauth_login(&app, "ana@5").await.unwrap();
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(5));
+
+    // The development login's upsert never overwrites github_id.
+    db::upsert_user(&pool, "ana", Some(6), None, None)
+        .await
+        .unwrap();
+    assert_eq!(db::github_id_of(&pool, "ana").await.unwrap(), Some(5));
+}
+
+fn dev_auth_for(allowed: &str) -> AuthConfig {
+    AuthConfig::from_vars(|k| match k {
+        "ALLOWED_GITHUB_USERS" => Some(allowed.into()),
+        "DEV_LOGIN" => Some("1".into()),
+        _ => None,
+    })
+    .unwrap()
+}
+
+#[tokio::test]
+async fn removing_guest_revokes_access_on_restart() {
+    let pool = memory_db().await;
+    let before = router(pool.clone(), dev_auth_for("ana,bia"));
+    let bia = common::dev_session(&before, "bia").await;
+    let ana = common::dev_session(&before, "ana").await;
+    let bia_id = bia.split_once('=').unwrap().1.to_owned();
+
+    // "Restart" without bia on the list: her session stops working at once.
+    let after = router(pool.clone(), dev_auth_for("ana"));
+    assert_eq!(location(&get(&after, "/", Some(&bia)).await), "/login");
+    assert_eq!(
+        get(&after, "/ws/quadro", Some(&bia)).await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(get(&after, "/", Some(&ana)).await.status(), StatusCode::OK);
+
+    // The boot cleanup deletes the revoked (and expired) sessions.
+    db::create_session(&pool, "velha", "ana", 1).await.unwrap();
+    let state = server::AppState::new(pool.clone(), dev_auth_for("ana"));
+    assert_eq!(server::auth::prune_sessions(&state).await.unwrap(), 2);
+    assert_eq!(db::session_login(&pool, &bia_id, 0).await.unwrap(), None);
+    assert_eq!(db::session_login(&pool, "velha", 0).await.unwrap(), None);
+    assert_eq!(get(&after, "/", Some(&ana)).await.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn periodic_cleanup_runs_at_boot_and_repeats() {
+    let pool = memory_db().await;
+    db::upsert_user(&pool, "ana", None, None, None)
+        .await
+        .unwrap();
+    db::create_session(&pool, "s1", "ana", 1).await.unwrap();
+    let state = server::AppState::new(pool.clone(), dev_auth_for("ana"));
+    let task = server::spawn_session_cleanup(state, std::time::Duration::from_millis(20));
+
+    let wait = |id: &'static str| {
+        let pool = pool.clone();
+        async move {
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while db::session_login(&pool, id, 0).await.unwrap().is_some() {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .expect("sessão apagada pela limpeza");
+        }
+    };
+    wait("s1").await;
+    db::create_session(&pool, "s2", "ana", 1).await.unwrap();
+    wait("s2").await;
+    task.abort();
+}
+
+fn post_logout(session: &str, origin: Option<&str>) -> Request<Body> {
+    let mut req = Request::post("/logout").header(header::COOKIE, session);
+    if let Some(o) = origin {
+        req = req.header(header::ORIGIN, o);
+    }
+    req.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn cross_origin_posts_are_refused() {
+    let (app, _) = oauth_app().await;
+    let session = oauth_login(&app, "ana").await.unwrap();
+
+    // A sibling subdomain (same site), an opaque origin and the wrong
+    // scheme: 403, and the session is untouched.
+    for evil in [
+        "https://sibling.example.com",
+        "null",
+        "http://vanguarda.exemplo",
+    ] {
+        let res = send(&app, post_logout(&session, Some(evil))).await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN, "{evil}");
+    }
+    assert_eq!(
+        get(&app, "/", Some(&session)).await.status(),
+        StatusCode::OK
+    );
+
+    // Plain GETs from another origin go through.
+    let req = Request::get("/login")
+        .header(header::ORIGIN, "https://sibling.example.com")
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(send(&app, req).await.status(), StatusCode::OK);
+
+    // The app's own origin (the logout form) works.
+    let res = send(
+        &app,
+        post_logout(&session, Some("https://vanguarda.exemplo")),
+    )
+    .await;
+    assert_eq!(location(&res), "/login");
+    assert_eq!(location(&get(&app, "/", Some(&session)).await), "/login");
 }

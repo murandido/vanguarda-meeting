@@ -23,8 +23,7 @@ and is refused unless the server listens on a loopback address.
 - No credentials are stored; account security (2FA, recovery) is GitHub's.
 - Inviting or removing someone is a configuration change and a container
   restart.
-- GitHub logins can be renamed and later claimed by someone else. The security
-  hardening in #17 pins the GitHub account id seen on first login and checks the
+- GitHub logins can be renamed and later claimed by someone else. The server pins the GitHub account id seen on first login and checks the
   allow-list on every request, so a stale or reassigned login cannot get in.
 - Being offline from GitHub blocks new logins, not existing sessions.
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO users (login, github_id, name, avatar_url) VALUES (?, ?, ?, ?)\n         ON CONFLICT (login) DO UPDATE\n         SET github_id = COALESCE(users.github_id, excluded.github_id),\n             name = COALESCE(excluded.name, users.name),\n             avatar_url = COALESCE(excluded.avatar_url, users.avatar_url),\n             last_login_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "81355a7c7241836067fb1b606488f4308f275fd591a73af68e4aff8ab8287b60"
+}

@@ -17,11 +17,13 @@ use std::{
 };
 
 use axum::{
-    Router, middleware,
+    Router,
+    http::{HeaderName, HeaderValue},
+    middleware,
     routing::{get, post},
 };
 use sqlx::SqlitePool;
-use tower_http::services::ServeDir;
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
 pub use auth::AuthConfig;
 pub use rooms::{MAX_MESSAGE_BYTES, RoomTiming, Rooms};
@@ -44,7 +46,7 @@ impl AppState {
             db,
             rooms: Rooms::default(),
             auth: Arc::new(auth),
-            http: reqwest::Client::new(),
+            http: http_client(HTTP_CONNECT_TIMEOUT, HTTP_TIMEOUT),
             clock: Clock::default(),
             ritmo: ritmo::Events::default(),
         }
@@ -102,6 +104,46 @@ impl Clock {
     }
 }
 
+/// Connect timeout for the OAuth calls to GitHub.
+pub const HTTP_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// Total timeout for each request to GitHub (connect + response).
+pub const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Outgoing HTTP client with timeouts: a slow GitHub cannot hold the OAuth
+/// callback (and the browser's connection) forever.
+#[must_use]
+pub fn http_client(connect: std::time::Duration, total: std::time::Duration) -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(connect)
+        .timeout(total)
+        .build()
+        .expect("cliente HTTP com TLS do sistema")
+}
+
+/// How often expired and revoked sessions are cleaned up.
+pub const SESSION_CLEANUP_EVERY: std::time::Duration = std::time::Duration::from_hours(1);
+
+/// Cleans up sessions now (at boot, so removed guests lose access) and then
+/// every `every`.
+#[must_use = "dropping the handle detaches the task"]
+pub fn spawn_session_cleanup(
+    state: AppState,
+    every: std::time::Duration,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticks = tokio::time::interval(every);
+        ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticks.tick().await;
+            match auth::prune_sessions(&state).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!("{n} sessões expiradas ou revogadas apagadas"),
+                Err(e) => tracing::error!("falha ao limpar sessões: {e}"),
+            }
+        }
+    })
+}
+
 /// A running clock whose local date (at `offset_minutes` from UTC) is `day`
 /// (`YYYY-MM-DD`), keeping the time of day; `None` if `day` is not a date.
 /// `now` is the real current time.
@@ -130,7 +172,39 @@ impl Default for Assets {
     }
 }
 
+/// The app's CSP. No inline scripts or styles: all JS lives in `/static`
+/// and htmx runs without `eval` or an injected `<style>` (see `htmx-config`
+/// in `base.html`). `'wasm-unsafe-eval'` only allows compiling the Cartazes
+/// WASM module. `form-action` includes GitHub for the OAuth redirect.
+pub const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; \
+    style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; \
+    object-src 'none'; base-uri 'none'; form-action 'self' https://github.com";
+
+/// Security headers on every response (the same values as the Caddy site
+/// file, so they also apply locally and are covered by tests).
+pub const SECURITY_HEADERS: [(&str, &str); 5] = [
+    ("content-security-policy", CONTENT_SECURITY_POLICY),
+    ("referrer-policy", "strict-origin-when-cross-origin"),
+    (
+        "permissions-policy",
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    ),
+    ("x-content-type-options", "nosniff"),
+    ("x-frame-options", "DENY"),
+];
+
 pub fn app(state: AppState, assets: &Assets) -> Router {
+    let mut router = routes(state, assets);
+    for (name, value) in SECURITY_HEADERS {
+        router = router.layer(SetResponseHeaderLayer::if_not_present(
+            HeaderName::from_static(name),
+            HeaderValue::from_static(value),
+        ));
+    }
+    router
+}
+
+fn routes(state: AppState, assets: &Assets) -> Router {
     Router::new()
         .route("/", get(pages::index))
         .route("/b/{board}", get(pages::board))
@@ -152,6 +226,10 @@ pub fn app(state: AppState, assets: &Assets) -> Router {
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_user,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::check_origin,
         ))
         .with_state(state)
 }
