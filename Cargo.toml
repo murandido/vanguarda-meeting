@@ -17,7 +17,7 @@ axum = { version = "0.8", features = ["ws"] }
 # Sem rayon/plotters: só medimos, relatórios HTML não são necessários.
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
-getrandom = "0.3"
+getrandom = "0.4"
 loro = "1"
 proptest = "1"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "form"] }
