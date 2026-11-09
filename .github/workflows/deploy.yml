@@ -62,7 +62,7 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ env.TARGET }}
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: ${{ env.TARGET }}
       - name: toolchain C para aarch64
@@ -80,7 +80,7 @@ jobs:
       # Mesmo pkg que passou no E2E do CI. Num disparo manual, compila de novo.
       - name: baixar pkg do CI
         if: github.event_name == 'workflow_run'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: canvas-pkg
           path: dist/pkg
